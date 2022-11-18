@@ -7,10 +7,11 @@ pre_build:
 	go mod tidy
 	mkdir -p ./bin
 
-build_pgarrow:
-	go build -o ./bin/pgarrow.$(uname_p) ./cmd/pgarrow
+build_kafka:
+	go build -o ./bin/pgarrow.$(uname_p) ./cmd/pgarrowkafka
+	go build -o ./bin/pgarrow.$(uname_p) ./cmd/kafkaarrowpg
 
-build_arrowpg:
+build_rabbitmq:
 	go build -o ./bin/arrowpg.$(uname_p) ./cmd/arrowpg
 
 build_dlv:

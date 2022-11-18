@@ -1,71 +1,22 @@
 package pg
 
 import (
-	"fmt"
-	"os"
-	"os/user"
-	"strings"
-
-	"github.com/jackc/pgx/v4"
-)
-
-var (
-	UnexpctedRole = fmt.Errorf("we are connected to a database with another role then wished for")
+	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Conn struct {
-	Type       string `yaml:"type"`
-	ConnParams Dsn    `yaml:"conn_params"`
-	Role       string `yaml:"role"`
-	conn       *pgx.Conn
+	config           Config
+	conn             *pgconn.PgConn
+	sysIdent         pglogrepl.IdentifySystemResult
+	relationColumns  RelationColumnTypes
+	relationMessages map[uint32]*pglogrepl.RelationMessage
 }
 
-func NewConn(connParams Dsn) (c *Conn) {
+func NewConn(conf Config) (c *Conn) {
 	return &Conn{
-		ConnParams: connParams,
+		config: conf,
 	}
-}
-
-func (c *Conn) DbName() (dbName string) {
-	value, ok := c.ConnParams["dbname"]
-	if ok {
-		return value
-	}
-	value = os.Getenv("PGDATABASE")
-	if value != "" {
-		return value
-	}
-	return c.UserName()
-}
-
-func (c *Conn) UserName() (userName string) {
-	value, ok := c.ConnParams["user"]
-	if ok {
-		return value
-	}
-	value = os.Getenv("PGUSER")
-	if value != "" {
-		return value
-	}
-	currentUser, err := user.Current()
-	if err != nil {
-		log.Panic("cannot determine current user")
-
-	}
-	return currentUser.Username
-}
-
-// connectStringValue uses proper quoting for connect string values
-func connectStringValue(objectName string) (escaped string) {
-	return fmt.Sprintf("'%s'", strings.Replace(objectName, "'", "\\'", -1))
-}
-
-func (c *Conn) DSN() (dsn string) {
-	var pairs []string
-	for key, value := range c.ConnParams {
-		pairs = append(pairs, fmt.Sprintf("%s=%s", key, connectStringValue(value)))
-	}
-	return strings.Join(pairs[:], " ")
 }
 
 func (c *Conn) Connect() (err error) {
@@ -76,96 +27,48 @@ func (c *Conn) Connect() (err error) {
 			return nil
 		}
 	}
-	c.conn, err = pgx.Connect(ctx, c.DSN())
+	c.conn, err = pgconn.Connect(ctx, c.config.DSN.ConnString())
 	if err != nil {
 		c.conn = nil
 		return err
 	}
+	c.sysIdent, err = pglogrepl.IdentifySystem(ctx, c.conn)
+	if err != nil {
+		log.Fatalln("IdentifySystem failed:", err)
+	}
+	log.Info("SystemID:", c.sysIdent.SystemID, "Timeline:", c.sysIdent.Timeline, "XLogPos:", c.sysIdent.XLogPos, "DBName:", c.sysIdent.DBName)
+
 	return nil
 }
 
-func (c *Conn) CheckExists(query string, args ...interface{}) (exists bool, err error) {
-	err = c.Connect()
-	if err != nil {
-		return false, err
-	}
-	var answer string
-	err = c.conn.QueryRow(ctx, query, args...).Scan(&answer)
-	if err == pgx.ErrNoRows {
-		return false, nil
-	}
-	if err == nil {
-		return true, nil
-	}
-	return false, err
-}
-
-func (c *Conn) Exec(query string, args ...interface{}) (err error) {
-	err = c.Connect()
-	if err != nil {
-		return err
-	}
-	_, err = c.conn.Exec(ctx, query, args...)
-	return err
-}
-
-func (c *Conn) GetOneField(query string, args ...interface{}) (answer string, err error) {
-	err = c.Connect()
-	if err != nil {
-		return "", err
-	}
-
-	err = c.conn.QueryRow(ctx, query, args...).Scan(&answer)
-	if err != nil {
-		return "", fmt.Errorf("runQueryGetOneField (%s) failed: %v\n", query, err)
-	}
-	return answer, nil
-}
-
-func (c *Conn) GetAll(query string, args ...interface{}) (answer Result, err error) {
-	err = c.Connect()
-	if err != nil {
-		return answer, err
-	}
-	var cursor pgx.Rows
-	if cursor, err = c.conn.Query(ctx, query, args...); err != nil {
-		return answer, err
-	} else {
-		for _, header := range cursor.FieldDescriptions() {
-			answer.header = append(answer.header, string(header.Name))
-		}
-		for cursor.Next() {
-			var row []string
-			var cols []interface{}
-			if cols, err = cursor.Values(); err != nil {
-				return answer, err
-			} else {
-				for _, col := range cols {
-					row = append(row, fmt.Sprint(col))
-				}
-			}
-			answer.rows = append(answer.rows, row)
-		}
-	}
-	return answer, nil
-}
-
-func (c *Conn) VerifyRole(expected string) error {
-	if expected == "" {
-		expected = c.Role
-	}
-	if expected == "all" {
+func (c *Conn) Close() (err error) {
+	if c.conn == nil {
 		return nil
 	}
-	if _, ok := ValidRoles[expected]; !ok {
-		return fmt.Errorf("invalid role was specified for conn %s", c.ConnParams.String(true))
+	if c.conn.IsClosed() {
+		c.conn = nil
+		return nil
 	}
-	if role, err := c.GetOneField("select case pg_is_in_recovery() when true then 'standby' else 'primary' end"); err != nil {
+	if err = c.conn.Close(ctx); err != nil {
 		return err
-	} else if role != expected {
-		log.Debugf("actual role %s != expected role %s", role, expected)
-		return UnexpctedRole
 	}
-	log.Debugf("actual role is as expected %s", expected)
+	c.conn = nil
 	return nil
 }
+
+func (c *Conn) RunSQL(sql string) (err error) {
+	if err = c.Connect(); err != nil {
+		return err
+	}
+	cur := c.conn.Exec(ctx, sql)
+	return cur.Close()
+}
+
+//func (c *Conn) RedoTransaction(t Transaction) (err error) {
+//
+//	if err = c.Connect(); err != nil {
+//		return err
+//	}
+//	cur := c.conn.ExecParams(ctx, t.ParamSQL(), t.ParamValues(), t.ParamOIDs(), nil, nil)
+//	return cur.Close()
+//}

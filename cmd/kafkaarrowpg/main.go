@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	internal.RunAPI()
+	internal.HandleKafkaArrowPg()
 }
