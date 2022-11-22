@@ -3,16 +3,15 @@ package pg
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pglogrepl"
 )
 
 // The Transaction struct is used as a format for storing
 type Transaction struct {
-	LSN       pglogrepl.LSN
+	LSN       uint64
 	Type      string
 	Namespace string
 	RelName   string
-	Vals      ColumnValues
+	Values    ColumnValues
 	Where     ColumnValues
 }
 
@@ -37,8 +36,8 @@ func (t Transaction) Sql() string {
 	case "INSERT":
 		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 			t.RelationName(),
-			t.Vals.Columns(),
-			t.Vals.Values())
+			t.Values.Columns(),
+			t.Values.Values())
 	case "TRUNCATE":
 		sql = fmt.Sprintf("TRUNCATE TABLE ONLY %s", t.RelationName())
 	case "DELETE":
@@ -46,7 +45,7 @@ func (t Transaction) Sql() string {
 	case "UPDATE":
 		sql = fmt.Sprintf("UPDATE %s SET %s WHERE %s",
 			t.RelationName(),
-			t.Vals.SetSQL(),
+			t.Values.SetSQL(),
 			t.Where.WhereSQL())
 	default:
 		log.Fatalf("received unknown transaction type (%s)", t.Type)

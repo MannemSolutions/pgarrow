@@ -33,6 +33,12 @@ func (c *Config) Initialize() (err error) {
 	if c.Prefix == "" {
 		c.Prefix = "pgarrow"
 	}
+	if c.Network == "" {
+		c.Network = "tcp"
+	}
+	if c.Address == "" {
+		c.Address = "localhost:9092"
+	}
 	if c.topics == nil {
 		fmt.Println("make topics")
 		c.topics = make(Topics)

@@ -1,7 +1,10 @@
 ---
+kafka_config:
+  address: "kafka:9092"
 pg_config:
   dsn:
     password: pgarrow
     user: postgres
     host: postgres
     replication: database
+

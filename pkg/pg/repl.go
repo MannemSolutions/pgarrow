@@ -7,7 +7,6 @@ package pg
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -142,21 +141,17 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 				}
 
-				relationJSON, _ := json.Marshal([]string{relationInfo.Namespace, relationInfo.RelationName})
-				log.Debug("Relation JSON part: %s\n", relationJSON)
-
 				newValues := ColValsFromLogMsg(logicalMsg.Tuple.Columns, relationInfo)
-				log.Debug("INSERT INTO %s.%s: %v", relationInfo.Namespace, relationInfo.RelationName, relationInfo)
-				jsonRecord, _ := json.Marshal(relationInfo)
-				log.Debug("JSON part = %s\n", jsonRecord)
+				log.Debugf("INSERT INTO %s.%s: %v", relationInfo.Namespace, relationInfo.RelationName, relationInfo)
 
 				t = Transaction{
-					LSN:       xld.WALStart,
+					LSN:       uint64(xld.WALStart),
 					Type:      "INSERT",
 					Namespace: relationInfo.Namespace,
 					RelName:   relationInfo.RelationName,
-					Vals:      newValues,
+					Values:    newValues,
 				}
+				log.Debug(t.Sql())
 				return t, err
 
 			case *pglogrepl.UpdateMessage:
@@ -167,24 +162,19 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 				}
 
-				relationJSON, _ := json.Marshal([]string{relationInfo.Namespace, relationInfo.RelationName})
-				log.Debug("Relation JSON part: %s\n", relationJSON)
-
 				log.Debug("RELTYPE   %v\n", relationInfo)
 
 				newValues := ColValsFromLogMsg(logicalMsg.NewTuple.Columns, relationInfo)
 				//				log.Printf("DEBUG UPDATE %s.%s: %v", rel.Namespace, rel.RelationName, new_values)
-				jsonRowRecord, _ := json.Marshal(newValues)
-				log.Debug("JSON part = %s\n", jsonRowRecord)
 
 				originalValues := ColValsFromLogMsg(logicalMsg.OldTuple.Columns, relationInfo)
 				whereVals := WhereFromLogMsg(c.relationMessages[logicalMsg.RelationID].Columns, originalValues)
 				t = Transaction{
-					LSN:       xld.WALStart,
+					LSN:       uint64(xld.WALStart),
 					Type:      "UPDATE",
 					Namespace: relationInfo.Namespace,
 					RelName:   relationInfo.RelationName,
-					Vals:      newValues,
+					Values:    newValues,
 					Where:     whereVals,
 				}
 				return t, err
@@ -196,13 +186,10 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 				}
 
-				relationJSON, _ := json.Marshal([]string{relationInfo.Namespace, relationInfo.RelationName})
-				log.Debug("Relation JSON part: %s\n", relationJSON)
-
 				oldValues := ColValsFromLogMsg(logicalMsg.OldTuple.Columns, relationInfo)
 				whereVals := WhereFromLogMsg(c.relationMessages[logicalMsg.RelationID].Columns, oldValues)
 				t = Transaction{
-					LSN:       xld.WALStart,
+					LSN:       uint64(xld.WALStart),
 					Type:      "DELETE",
 					Namespace: relationInfo.Namespace,
 					RelName:   relationInfo.RelationName,
@@ -218,7 +205,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationNum)
 				}
 				t = Transaction{
-					LSN:       xld.WALStart,
+					LSN:       uint64(xld.WALStart),
 					Type:      "TRUNCATE",
 					Namespace: relationInfo.Namespace,
 					RelName:   relationInfo.RelationName,

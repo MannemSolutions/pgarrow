@@ -17,7 +17,8 @@ func (t *Topic) Connect() (err error) {
 	if t.conn != nil {
 		return nil
 	}
-	if t.conn, err = kafka.DialLeader(ctx, "tcp", "localhost:9092", t.name,
+	log.Debug(t.parent.Address)
+	if t.conn, err = kafka.DialLeader(ctx, t.parent.Network, t.parent.Address, t.name,
 		t.parent.Partition); err != nil {
 		log.Fatal("failed to dial leader:", err)
 	}
