@@ -22,8 +22,8 @@ build_dlv:
 # Use the following on m1:
 # alias make='/usr/bin/arch -arch arm64 /usr/bin/make'
 debug_pgarrow:
-	go build -gcflags "all=-N -l" -o ./bin/pgarrow.debug.$(uname_p) ./cmd/pgarrow
-	~/go/bin/dlv --headless --listen=:2345 --api-version=2 --accept-multiclient exec ./bin/pgarrow.debug.$(uname_p)
+	go build -gcflags "all=-N -l" -o ./bin/pgarrowkafka.debug.$(uname_p) ./cmd/pgarrowkafka
+	~/go/bin/dlv --headless --listen=:2345 --api-version=2 --accept-multiclient exec ./bin/pgarrowkafka.debug.$(uname_p)
 
 debug_arrowpg:
 	go build -gcflags "all=-N -l" -o ./bin/arrowpg.debug.$(uname_p) ./cmd/arrowpg

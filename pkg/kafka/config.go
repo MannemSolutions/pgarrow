@@ -30,6 +30,9 @@ func (c *Config) Initialize() (err error) {
 		// 1MB (maybe derive sane defaults for performance tests?)
 		c.MaxBatchBytes = 1048576
 	}
+	if c.Prefix == "" {
+		c.Prefix = "pgarrow"
+	}
 	if c.topics == nil {
 		fmt.Println("make topics")
 		c.topics = make(Topics)

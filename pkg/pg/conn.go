@@ -5,17 +5,19 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+type RelationMessages map[uint32]*pglogrepl.RelationMessage
+
 type Conn struct {
 	config           *Config
 	conn             *pgconn.PgConn
 	sysIdent         pglogrepl.IdentifySystemResult
-	relationColumns  RelationColumnTypes
-	relationMessages map[uint32]*pglogrepl.RelationMessage
+	relationMessages RelationMessages
 }
 
 func NewConn(conf *Config) (c *Conn) {
 	return &Conn{
-		config: conf,
+		config:           conf,
+		relationMessages: make(RelationMessages),
 	}
 }
 

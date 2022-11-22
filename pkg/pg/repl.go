@@ -11,22 +11,29 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
-	"github.com/jackc/pgproto3"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
 )
 
-func (c Conn) StartRepl() (err error) {
+func (c *Conn) StartRepl() (err error) {
 	if err = c.Connect(); err != nil {
 		return err
 	}
 
 	_, err = pglogrepl.CreateReplicationSlot(context.Background(), c.conn, c.config.Slot, "pgoutput",
-		pglogrepl.CreateReplicationSlotOptions{Temporary: true})
-	if err != nil {
+		pglogrepl.CreateReplicationSlotOptions{})
+	if pgErr, ok := err.(*pgconn.PgError); ok {
+		if pgErr.Code == "42710" {
+			log.Infoln("Slot already exists")
+		} else {
+			log.Fatalln("CreateReplicationSlot failed:", err)
+		}
+	} else if err != nil {
 		log.Fatalln("CreateReplicationSlot failed:", err)
+	} else {
+		log.Info("Created temporary replication slot:", c.config.Slot)
 	}
-	log.Info("Created temporary replication slot:", c.config.Slot)
 	err = pglogrepl.StartReplication(
 		context.Background(),
 		c.conn,
@@ -42,9 +49,16 @@ func (c Conn) StartRepl() (err error) {
 }
 
 func (c *Conn) NextTransaction() (t Transaction, err error) {
-	standbyMessageTimeout := time.Millisecond * time.Duration(c.config.standbyMessageTimeout)
+	standbyMessageTimeout := time.Millisecond * c.config.standbyMessageTimeout
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 
+	var (
+		rawMsg       pgproto3.BackendMessage
+		pkm          pglogrepl.PrimaryKeepaliveMessage
+		xld          pglogrepl.XLogData
+		parsedMsg    pglogrepl.Message
+		relationInfo *pglogrepl.RelationMessage
+	)
 	for {
 		if time.Now().After(nextStandbyMessageDeadline) {
 			err = pglogrepl.SendStandbyStatusUpdate(context.Background(), c.conn, pglogrepl.StandbyStatusUpdate{WALWritePosition: c.sysIdent.XLogPos})
@@ -55,8 +69,8 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 			nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		}
 
-		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
-		rawMsg, err := c.conn.ReceiveMessage(ctx)
+		ctxDeadline, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
+		rawMsg, err = c.conn.ReceiveMessage(ctxDeadline)
 		cancel()
 		if err != nil {
 			if pgconn.Timeout(err) {
@@ -73,13 +87,13 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
-			log.Infof("Received unexpected message: %T\n", rawMsg)
+			log.Infof("Received unexpected message: %T, %v\n", rawMsg, msg)
 			continue
 		}
 
 		switch msg.Data[0] {
 		case pglogrepl.PrimaryKeepaliveMessageByteID:
-			pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
+			pkm, err = pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
 			if err != nil {
 				log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 			}
@@ -93,7 +107,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 			}
 
 		case pglogrepl.XLogDataByteID:
-			xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
+			xld, err = pglogrepl.ParseXLogData(msg.Data[1:])
 			if err != nil {
 				log.Fatalln("ParseXLogData failed:", err)
 			}
@@ -103,13 +117,13 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 				xld.ServerWALEnd,
 				"ServerTime:", xld.ServerTime,
 				"WALData", string(xld.WALData))
-			logicalMsg, err := pglogrepl.Parse(xld.WALData)
+			parsedMsg, err = pglogrepl.Parse(xld.WALData)
 			if err != nil {
 				log.Fatalf("Parse logical replication message: %s", err)
 			}
-			log.Infof("Receive a logical replication message: %s", logicalMsg.Type())
+			log.Infof("Receive a logical replication message: %s", parsedMsg.Type())
 
-			switch logicalMsg := logicalMsg.(type) {
+			switch logicalMsg := parsedMsg.(type) {
 			case *pglogrepl.RelationMessage:
 				log.Debug("RELATION MESSAGE")
 
@@ -123,7 +137,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 
 			case *pglogrepl.InsertMessage:
 				log.Debug("INSERT MESSAGE")
-				relationInfo, ok := c.relationMessages[logicalMsg.RelationID]
+				relationInfo, ok = c.relationMessages[logicalMsg.RelationID]
 				if !ok {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 				}
@@ -137,6 +151,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 				log.Debug("JSON part = %s\n", jsonRecord)
 
 				t = Transaction{
+					LSN:       xld.WALStart,
 					Type:      "INSERT",
 					Namespace: relationInfo.Namespace,
 					RelName:   relationInfo.RelationName,
@@ -147,7 +162,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 			case *pglogrepl.UpdateMessage:
 				log.Debug("UPDATE MESSAGE")
 
-				relationInfo, ok := c.relationMessages[logicalMsg.RelationID]
+				relationInfo, ok = c.relationMessages[logicalMsg.RelationID]
 				if !ok {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 				}
@@ -165,6 +180,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 				originalValues := ColValsFromLogMsg(logicalMsg.OldTuple.Columns, relationInfo)
 				whereVals := WhereFromLogMsg(c.relationMessages[logicalMsg.RelationID].Columns, originalValues)
 				t = Transaction{
+					LSN:       xld.WALStart,
 					Type:      "UPDATE",
 					Namespace: relationInfo.Namespace,
 					RelName:   relationInfo.RelationName,
@@ -175,7 +191,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 			case *pglogrepl.DeleteMessage:
 				log.Debug("DELETE MESSAGE")
 
-				relationInfo, ok := c.relationMessages[logicalMsg.RelationID]
+				relationInfo, ok = c.relationMessages[logicalMsg.RelationID]
 				if !ok {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 				}
@@ -186,6 +202,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 				oldValues := ColValsFromLogMsg(logicalMsg.OldTuple.Columns, relationInfo)
 				whereVals := WhereFromLogMsg(c.relationMessages[logicalMsg.RelationID].Columns, oldValues)
 				t = Transaction{
+					LSN:       xld.WALStart,
 					Type:      "DELETE",
 					Namespace: relationInfo.Namespace,
 					RelName:   relationInfo.RelationName,
@@ -195,14 +212,16 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 
 			case *pglogrepl.TruncateMessage:
 				log.Debug("TRUNCATE MESSSAGE")
-				rel, ok := c.relationMessages[logicalMsg.RelationNum]
+				log.Debug(logicalMsg)
+				relationInfo, ok = c.relationMessages[logicalMsg.RelationNum]
 				if !ok {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationNum)
 				}
 				t = Transaction{
+					LSN:       xld.WALStart,
 					Type:      "TRUNCATE",
-					Namespace: rel.Namespace,
-					RelName:   rel.RelationName,
+					Namespace: relationInfo.Namespace,
+					RelName:   relationInfo.RelationName,
 				}
 				return t, nil
 

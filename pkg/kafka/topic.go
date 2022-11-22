@@ -31,6 +31,9 @@ func (t *Topic) MustClose() {
 }
 
 func (t *Topic) Close() (err error) {
+	if t.conn == nil {
+		return nil
+	}
 	if err = t.conn.Close(); err != nil {
 		return err
 	}

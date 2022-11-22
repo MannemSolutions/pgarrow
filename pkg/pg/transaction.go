@@ -3,10 +3,12 @@ package pg
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pglogrepl"
 )
 
 // The Transaction struct is used as a format for storing
 type Transaction struct {
+	LSN       pglogrepl.LSN
 	Type      string
 	Namespace string
 	RelName   string

@@ -22,10 +22,16 @@ func ColValsFromLogMsg(cols []*pglogrepl.TupleDataColumn, relInfo *pglogrepl.Rel
 			if err != nil {
 				log.Fatalln("error decoding column data:", err)
 			}
-			if s, ok := val.(string); !ok {
-				log.Fatalf("pgarrow does not work (yet) with values like %v", val)
-			} else {
-				cvs[colName] = stringValueSql(s)
+
+			switch v := val.(type) {
+			case nil:
+				cvs[colName] = "NULL"
+			case int, int32:
+				cvs[colName] = fmt.Sprintf("%d", v)
+			case string:
+				cvs[colName] = stringValueSql(v)
+			default:
+				log.Fatalf("pgarrow does not work (yet) with values like %v.(%T)", val, val)
 			}
 		}
 	}
