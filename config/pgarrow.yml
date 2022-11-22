@@ -1,0 +1,7 @@
+---
+pg_config:
+  dsn:
+    password: pgarrow
+    user: postgres
+    host: postgres
+    replication: database

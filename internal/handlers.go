@@ -1,6 +1,8 @@
 package internal
 
-import "github.com/mannemsolutions/pgarrrow/pkg/pg"
+import (
+	"github.com/mannemsolutions/pgarrrow/pkg/pg"
+)
 
 func HandlePgArrowKafka() {
 	initContext()
@@ -10,10 +12,11 @@ func HandlePgArrowKafka() {
 		log.Fatal(err)
 	}
 	initLogger(config.LogDest)
-	pgConn := pg.NewConn(config.PgConfig)
-	defer pgConn.Close()
+	enableDebug(config.Debug)
+	pgConn := pg.NewConn(&config.PgConfig)
+	defer pgConn.MustClose()
 	topic := config.KafkaConfig.NewTopic("stream")
-	defer topic.Close()
+	defer topic.MustClose()
 	if err = pgConn.StartRepl(); err != nil {
 		log.Fatal(err)
 	}
@@ -26,7 +29,9 @@ func HandlePgArrowKafka() {
 		if config.Debug {
 			log.Debugf("Transaction (%d bytes): %s", len(raw), string(raw))
 		}
-		topic.Publish(raw)
+		if err = topic.Publish(raw); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
@@ -38,10 +43,10 @@ func HandlePgArrowRabbitMQ() {
 		log.Fatal(err)
 	}
 	initLogger(config.LogDest)
-	pgConn := pg.NewConn(config.PgConfig)
-	defer pgConn.Close()
+	pgConn := pg.NewConn(&config.PgConfig)
+	defer pgConn.MustClose()
 	topic := config.KafkaConfig.NewTopic("stream")
-	defer topic.Close()
+	defer topic.MustClose()
 
 	var t pg.Transaction
 	var msgs [][]byte
@@ -54,7 +59,9 @@ func HandlePgArrowRabbitMQ() {
 			if t, err = pg.TransactionFromBytes(msg); err != nil {
 				sql := t.Sql()
 				log.Debugf("Running SQL: %s", sql)
-				pgConn.RunSQL(sql)
+				if err = pgConn.RunSQL(sql); err != nil {
+					log.Fatal(err)
+				}
 			}
 		}
 	}

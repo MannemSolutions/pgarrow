@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+type Topics map[string]*Topic
+
 type Topic struct {
 	name   string
 	conn   *kafka.Conn
@@ -20,6 +22,12 @@ func (t *Topic) Connect() (err error) {
 		log.Fatal("failed to dial leader:", err)
 	}
 	return nil
+}
+
+func (t *Topic) MustClose() {
+	if err := t.Close(); err != nil {
+		log.Fatalf("Error closing kafka connection: %e", err)
+	}
 }
 
 func (t *Topic) Close() (err error) {

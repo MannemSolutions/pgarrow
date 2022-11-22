@@ -14,7 +14,7 @@ type Config struct {
 	Address       string        `yaml:"address"`
 	Prefix        string        `yaml:"topic_prefix"`
 	Partition     int           `yaml:"partition"`
-	topics        map[string]*Topic
+	topics        Topics
 }
 
 // Initialize will initialize the config with defaults
@@ -29,6 +29,10 @@ func (c *Config) Initialize() (err error) {
 	if c.MaxBatchBytes < 1 {
 		// 1MB (maybe derive sane defaults for performance tests?)
 		c.MaxBatchBytes = 1048576
+	}
+	if c.topics == nil {
+		fmt.Println("make topics")
+		c.topics = make(Topics)
 	}
 	return nil
 }
@@ -52,6 +56,9 @@ func (c *Config) NewTopic(name string) *Topic {
 	t := Topic{
 		name:   name,
 		parent: c,
+	}
+	if c.topics == nil {
+		fmt.Println("not make topics")
 	}
 	c.topics[name] = &t
 

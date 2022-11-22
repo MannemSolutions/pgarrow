@@ -6,14 +6,14 @@ import (
 )
 
 type Conn struct {
-	config           Config
+	config           *Config
 	conn             *pgconn.PgConn
 	sysIdent         pglogrepl.IdentifySystemResult
 	relationColumns  RelationColumnTypes
 	relationMessages map[uint32]*pglogrepl.RelationMessage
 }
 
-func NewConn(conf Config) (c *Conn) {
+func NewConn(conf *Config) (c *Conn) {
 	return &Conn{
 		config: conf,
 	}
@@ -39,6 +39,12 @@ func (c *Conn) Connect() (err error) {
 	log.Info("SystemID:", c.sysIdent.SystemID, "Timeline:", c.sysIdent.Timeline, "XLogPos:", c.sysIdent.XLogPos, "DBName:", c.sysIdent.DBName)
 
 	return nil
+}
+
+func (c *Conn) MustClose() {
+	if err := c.Close(); err != nil {
+		log.Fatalf("Error closing pg connection: %e", err)
+	}
 }
 
 func (c *Conn) Close() (err error) {

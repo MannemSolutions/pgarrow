@@ -75,8 +75,7 @@ func NewConfig() (config Config, err error) {
 	return config, err
 }
 
-func (config Config) Initialize() {
-	enableDebug(config.Debug)
+func (config *Config) Initialize() {
 	config.KafkaConfig.Initialize()
 	config.PgConfig.Initialize()
 }
