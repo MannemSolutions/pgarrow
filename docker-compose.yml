@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: pgarrow
       KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
     ports:
-    - "5432"
+    - '5432:5432'
     volumes:
     - ./:/host
 #  zookeeper:
@@ -26,7 +26,7 @@ services:
     ports:
       - '9092:9092'
     environment:
-      KAFKA_ENABLE_KRAFT: yes
+      KAFKA_ENABLE_KRAFT: 'yes'
       KAFKA_CFG_PROCESS_ROLES: broker,controller
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
 #     KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
@@ -36,7 +36,7 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
 #     KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-      ALLOW_PLAINTEXT_LISTENER: yes
+      ALLOW_PLAINTEXT_LISTENER: 'yes'
 #    depends_on:
 #      - zookeeper
     networks:

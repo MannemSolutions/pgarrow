@@ -1,6 +1,6 @@
 uname_p := $(shell uname -p) # store the output of the command in a variable
 
-build: pre_build build_pgarrow build_arrowpg
+build: pre_build build_kafka build_rabbitmq
 
 pre_build:
 	./set_version.sh
@@ -8,11 +8,12 @@ pre_build:
 	mkdir -p ./bin
 
 build_kafka:
-	go build -o ./bin/pgarrow.$(uname_p) ./cmd/pgarrowkafka
-	go build -o ./bin/pgarrow.$(uname_p) ./cmd/kafkaarrowpg
+	go build -o ./bin/pgarrowkafka.$(uname_p) ./cmd/pgarrowkafka
+	go build -o ./bin/kafkaarrowpg.$(uname_p) ./cmd/kafkaarrowpg
 
 build_rabbitmq:
-	go build -o ./bin/arrowpg.$(uname_p) ./cmd/arrowpg
+	go build -o ./bin/pgarrowrabbit.$(uname_p) ./cmd/pgarrowrabbit
+	go build -o ./bin/rabbitarrowpg.$(uname_p) ./cmd/rabbitarrowpg
 
 build_dlv:
 	go get github.com/go-delve/delve/cmd/dlv@latest
