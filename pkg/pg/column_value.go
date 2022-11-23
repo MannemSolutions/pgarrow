@@ -48,26 +48,15 @@ func WhereFromLogMsg(cols []*pglogrepl.RelationMessageColumn, newVals ColumnValu
 	return where
 }
 
-func (ckvs ColumnValues) Columns() string {
-	var parts []string
-	for key := range ckvs {
-		parts = append(parts, identifierNameSql(key))
+func (ckvs ColumnValues) ColNamesValues() (names []string, values []string) {
+	for name, value := range ckvs {
+		names = append(names, identifierNameSql(name))
+		values = append(values, repackValueSql(value))
 	}
-	if len(parts) == 0 {
-		log.Fatal("Seems we are about to run a query with an empty column list!!!")
-	}
-	return strings.Join(parts, ", ")
-}
-
-func (ckvs ColumnValues) Values() string {
-	var parts []string
-	for _, value := range ckvs {
-		parts = append(parts, repackValueSql(value))
-	}
-	if len(parts) == 0 {
+	if len(values) == 0 {
 		log.Fatal("Seems we are about to run an INSERT query with an empty value list!!!")
 	}
-	return strings.Join(parts, ", ")
+	return names, values
 }
 
 func (ckvs ColumnValues) colIsValues() []string {
