@@ -120,7 +120,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 			if err != nil {
 				log.Fatalf("Parse logical replication message: %s", err)
 			}
-			log.Infof("Receive a logical replication message: %s", parsedMsg.Type())
+			log.Debugf("Receive a logical replication message: %s", parsedMsg.Type())
 
 			switch logicalMsg := parsedMsg.(type) {
 			case *pglogrepl.RelationMessage:

@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"fmt"
+	"github.com/segmentio/kafka-go"
 	"time"
 )
 
@@ -11,7 +12,7 @@ type Config struct {
 	MaxBatchBytes int           `yaml:"max_batch_bytes"`
 	MinBatchBytes int           `yaml:"min_batch_bytes"`
 	Network       string        `yaml:"network"`
-	Address       string        `yaml:"address"`
+	Brokers       []string      `yaml:"brokers"`
 	Prefix        string        `yaml:"topic_prefix"`
 	Partition     int           `yaml:"partition"`
 	topics        Topics
@@ -23,8 +24,12 @@ func (c *Config) Initialize() (err error) {
 		c.Deadline = time.Second * 10
 	}
 	if c.MessageBytes < 1 {
-		// 4k (maybe derive sane defaults for performance tests?)
-		c.MessageBytes = 4096
+		// Minimum record size would be 96 bytes at the absolute bare minimum
+		c.MessageBytes = 96
+	}
+	if c.MinBatchBytes < 1 {
+		// 1MB (maybe derive sane defaults for performance tests?)
+		c.MinBatchBytes = 1024
 	}
 	if c.MaxBatchBytes < 1 {
 		// 1MB (maybe derive sane defaults for performance tests?)
@@ -36,14 +41,24 @@ func (c *Config) Initialize() (err error) {
 	if c.Network == "" {
 		c.Network = "tcp"
 	}
-	if c.Address == "" {
-		c.Address = "localhost:9092"
+	if len(c.Brokers) == 0 {
+		c.Brokers = []string{"localhost:9092"}
 	}
 	if c.topics == nil {
-		fmt.Println("make topics")
 		c.topics = make(Topics)
 	}
 	return nil
+}
+
+func (c *Config) ReaderConfig(topicName string) (r kafka.ReaderConfig) {
+	topicName = fmt.Sprintf("%s_%s", c.Prefix, topicName)
+	return kafka.ReaderConfig{
+		Brokers:   c.Brokers,
+		Topic:     topicName,
+		Partition: c.Partition,
+		MinBytes:  c.MinBatchBytes,
+		MaxBytes:  c.MaxBatchBytes,
+	}
 }
 
 func (c *Config) Close() (err error) {
@@ -57,7 +72,6 @@ func (c *Config) Close() (err error) {
 }
 
 func (c *Config) NewTopic(name string) *Topic {
-	name = fmt.Sprintf("%s_%s", c.Prefix, name)
 	if t, exists := c.topics[name]; exists {
 		return t
 	}

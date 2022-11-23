@@ -36,6 +36,10 @@ func HandlePgArrowKafka() {
 }
 
 func HandlePgArrowRabbitMQ() {
+
+}
+
+func HandleKafkaArrowPg() {
 	initContext()
 	config, err := NewConfig()
 	if err != nil {
@@ -43,32 +47,34 @@ func HandlePgArrowRabbitMQ() {
 		log.Fatal(err)
 	}
 	initLogger(config.LogDest)
+	enableDebug(config.Debug)
+	log.Debug("Connecting to PostgreSQL")
 	pgConn := pg.NewConn(&config.PgConfig)
 	defer pgConn.MustClose()
+	log.Debug("Connecting to Kafka")
 	topic := config.KafkaConfig.NewTopic("stream")
 	defer topic.MustClose()
 
 	var t pg.Transaction
-	var msgs [][]byte
 	for {
-		msgs, err = topic.MultiConsume()
-		if err != nil {
+		log.Debug("Consuming")
+		m, kErr := topic.Consume()
+		if kErr != nil {
+			log.Fatal(kErr)
+		}
+		log.Debug("Processing messages")
+		log.Debugf("Processing msg (%d bytes)", len(m.Value))
+		if t, err = pg.TransactionFromBytes(m.Value); err != nil {
+			log.Fatalf("Could not create a transaction from msg: %e", err)
+		}
+		sql := t.Sql()
+		if err = pgConn.RunSQL(sql); err != nil {
 			log.Fatal(err)
 		}
-		for _, msg := range msgs {
-			if t, err = pg.TransactionFromBytes(msg); err != nil {
-				sql := t.Sql()
-				log.Debugf("Running SQL: %s", sql)
-				if err = pgConn.RunSQL(sql); err != nil {
-					log.Fatal(err)
-				}
-			}
+		if err = topic.Commit(m); err != nil {
+			log.Fatalf("Could not commit a msg to kafka: %e", err)
 		}
 	}
-}
-
-func HandleKafkaArrowPg() {
-
 }
 
 func HandleRabbitMQArrowPg() {

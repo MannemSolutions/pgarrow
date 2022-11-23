@@ -22,14 +22,14 @@ function assert() {
 TST=0
 COMPOSE_PROJDIR=$(basename $PWD)
 
-docker-compose down --remove-orphans #&& docker rmi ${COMPOSE_PROJDIR}_builder ${COMPOSE_PROJDIR}_stolon || echo new or partial install
-docker-compose up -d --scale stolon=3
-docker exec ${COMPOSE_PROJDIR}_builder_1 /bin/bash -ic 'cd /host && make build_dlv build_pgquartz'
-
-for ((i=1;i<=3;i++)); do
-  echo "${COMPOSE_PROJDIR}_stolon_${i}"
-  docker exec "${COMPOSE_PROJDIR}_stolon_${i}" /host/bin/${COMPOSE_PROJDIR}.x86_64 &
-  sleep 1
+#docker-compose down --remove-orphans #&& docker rmi ${COMPOSE_PROJDIR}_builder ${COMPOSE_PROJDIR}_stolon || echo new or partial install
+docker-compose up -d builder
+docker exec ${COMPOSE_PROJDIR}_builder_1 /bin/bash -ic 'cd /host && make build'
+for F in pgarrowkafka kafkaarrowpg; do
+  cp "bin/${F}".* "./docker/$F/"
+  mv "./docker/${F}/${F}.aarch64" "./docker/${F}/${F}.arm64"
+  cp config/pgarrow.yml "./docker/$F/"
+  docker-compose up -d "$F"
 done
 exit
 

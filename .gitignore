@@ -1,2 +1,4 @@
 internal/version.go
 bin
+docker/*/*.arm*
+docker/*/*.x86*

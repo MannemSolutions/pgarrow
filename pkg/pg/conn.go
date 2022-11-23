@@ -68,6 +68,7 @@ func (c *Conn) RunSQL(sql string) (err error) {
 	if err = c.Connect(); err != nil {
 		return err
 	}
+	log.Debugf("Running SQL: %s", sql)
 	cur := c.conn.Exec(ctx, sql)
 	return cur.Close()
 }

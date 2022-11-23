@@ -3,6 +3,7 @@ package pg
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // The Transaction struct is used as a format for storing
@@ -20,9 +21,12 @@ func (t Transaction) Dump() ([]byte, error) {
 }
 
 func TransactionFromBytes(j []byte) (t Transaction, err error) {
-	if err = json.Unmarshal(j, t); err != nil {
+	log.Debugf(string(j))
+	if err = json.Unmarshal(j, &t); err != nil {
+		log.Debug(err)
 		return Transaction{}, err
 	}
+	log.Debug(t)
 	return t, nil
 }
 
@@ -34,10 +38,11 @@ func (t Transaction) Sql() string {
 	var sql string
 	switch t.Type {
 	case "INSERT":
+		names, values := t.Values.ColNamesValues()
 		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 			t.RelationName(),
-			t.Values.Columns(),
-			t.Values.Values())
+			strings.Join(names, ","),
+			strings.Join(values, ","))
 	case "TRUNCATE":
 		sql = fmt.Sprintf("TRUNCATE TABLE ONLY %s", t.RelationName())
 	case "DELETE":
@@ -48,7 +53,7 @@ func (t Transaction) Sql() string {
 			t.Values.SetSQL(),
 			t.Where.WhereSQL())
 	default:
-		log.Fatalf("received unknown transaction type (%s)", t.Type)
+		log.Errorf("received unknown transaction type (%s)", t.Type)
 	}
 	return sql
 }

@@ -6,6 +6,7 @@ services:
     - "2345:2345"
     volumes:
     - ./:/host
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
   postgres:
     image: postgres
     command: ['postgres', '-c', 'config_file=/etc/postgresql/postgresql.conf']
@@ -43,10 +44,14 @@ services:
 #     KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
 #    depends_on:
 #      - zookeeper
-  pgarrow:
-    build: ./docker/pgarrow
-  arrowpg:
-    build: ./docker/arrowpg
+  pgarrowkafka:
+    build: ./docker/pgarrowkafka
+    volumes:
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
+  kafkaarrowpg:
+    build: ./docker/kafkaarrowpg
+    volumes:
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
   rabbitmq:
     image: rabbitmq
     ports:

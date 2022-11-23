@@ -1,6 +1,8 @@
 package kafka
 
 import (
+	"context"
+	"fmt"
 	"github.com/segmentio/kafka-go"
 	"time"
 )
@@ -9,20 +11,39 @@ type Topics map[string]*Topic
 
 type Topic struct {
 	name   string
-	conn   *kafka.Conn
+	reader *kafka.Reader
+	writer *kafka.Writer
 	parent *Config
+	batch  *kafka.Batch
 }
 
 func (t *Topic) Connect() (err error) {
-	if t.conn != nil {
+	if err = t.ConnectReader(); err != nil {
+		return err
+	}
+	t.ConnectWriter()
+	return nil
+}
+
+func (t *Topic) ConnectReader() (err error) {
+	if t.reader != nil {
 		return nil
 	}
-	log.Debug(t.parent.Address)
-	if t.conn, err = kafka.DialLeader(ctx, t.parent.Network, t.parent.Address, t.name,
-		t.parent.Partition); err != nil {
+	if t.reader = kafka.NewReader(t.parent.ReaderConfig(t.name)); err != nil {
 		log.Fatal("failed to dial leader:", err)
 	}
 	return nil
+}
+
+func (t *Topic) ConnectWriter() {
+	if t.writer != nil {
+		return
+	}
+	t.writer = &kafka.Writer{
+		Addr:       kafka.TCP(t.parent.Brokers...),
+		Topic:      fmt.Sprintf("%s_%s", t.parent.Prefix, t.name),
+		BatchBytes: int64(t.parent.MaxBatchBytes),
+	}
 }
 
 func (t *Topic) MustClose() {
@@ -32,18 +53,14 @@ func (t *Topic) MustClose() {
 }
 
 func (t *Topic) Close() (err error) {
-	if t.conn == nil {
+	if t.reader == nil {
 		return nil
 	}
-	if err = t.conn.Close(); err != nil {
+	if err = t.reader.Close(); err != nil {
 		return err
 	}
-	t.conn = nil
+	t.reader = nil
 	return nil
-}
-
-func (t *Topic) ExtendDeadline(duration time.Duration) {
-	t.conn.SetDeadline(time.Now().Add(duration))
 }
 
 func (t *Topic) Publish(data []byte) (err error) {
@@ -54,40 +71,31 @@ func (t *Topic) MultiPublish(multiData [][]byte) (err error) {
 	if len(multiData) == 0 {
 		return nil
 	}
-	if err = t.Connect(); err != nil {
-		return err
-	}
-	t.ExtendDeadline(t.parent.Deadline)
+	t.ConnectWriter()
 	var msgs []kafka.Message
 	for _, d := range multiData {
 		msgs = append(msgs, kafka.Message{Value: d})
 	}
-	if _, err = t.conn.WriteMessages(msgs...); err != nil {
+	if err = t.writer.WriteMessages(t.Context(), msgs...); err != nil {
 		log.Fatal("failed to write messages:", err)
 	}
 	return nil
 }
 
-func (t *Topic) MultiConsume() (msgs [][]byte, err error) {
-	if err = t.Connect(); err != nil {
-		return nil, err
-	}
-	t.ExtendDeadline(t.parent.Deadline)
+func (t *Topic) Context() context.Context {
+	c, _ := context.WithDeadline(ctx, time.Now().Add(t.parent.Deadline))
+	return c
+}
 
-	batch := t.conn.ReadBatch(t.parent.MinBatchBytes, t.parent.MaxBatchBytes)
-
-	var n int
-	b := make([]byte, t.parent.MessageBytes)
-	for {
-		n, err = batch.Read(b)
-		if err != nil {
-			break
-		}
-		msgs = append(msgs, b[:n])
+func (t *Topic) Consume() (m kafka.Message, err error) {
+	if err = t.ConnectReader(); err != nil {
+		return m, err
 	}
-
-	if err = batch.Close(); err != nil {
-		return nil, err
+	if m, err = t.reader.FetchMessage(t.Context()); err != nil {
+		return m, err
 	}
-	return msgs, nil
+	return m, nil
+}
+func (t *Topic) Commit(m kafka.Message) (err error) {
+	return t.reader.CommitMessages(t.Context(), m)
 }
