@@ -14,14 +14,14 @@ type Config struct {
 	Network       string        `yaml:"network"`
 	Brokers       []string      `yaml:"brokers"`
 	Prefix        string        `yaml:"topic_prefix"`
-	Partition     int           `yaml:"partition"`
+	ConsumerGroup string        `yaml:"consumer_group"`
 	topics        Topics
 }
 
 // Initialize will initialize the config with defaults
 func (c *Config) Initialize() (err error) {
 	if c.Deadline.Milliseconds() < 1 {
-		c.Deadline = time.Second * 10
+		c.Deadline = time.Second
 	}
 	if c.MessageBytes < 1 {
 		// Minimum record size would be 96 bytes at the absolute bare minimum
@@ -29,11 +29,14 @@ func (c *Config) Initialize() (err error) {
 	}
 	if c.MinBatchBytes < 1 {
 		// 1MB (maybe derive sane defaults for performance tests?)
-		c.MinBatchBytes = 1024
+		c.MinBatchBytes = 96
 	}
 	if c.MaxBatchBytes < 1 {
 		// 1MB (maybe derive sane defaults for performance tests?)
 		c.MaxBatchBytes = 1048576
+	}
+	if c.ConsumerGroup == "" {
+		c.ConsumerGroup = "pgarrow1"
 	}
 	if c.Prefix == "" {
 		c.Prefix = "pgarrow"
@@ -53,11 +56,11 @@ func (c *Config) Initialize() (err error) {
 func (c *Config) ReaderConfig(topicName string) (r kafka.ReaderConfig) {
 	topicName = fmt.Sprintf("%s_%s", c.Prefix, topicName)
 	return kafka.ReaderConfig{
-		Brokers:   c.Brokers,
-		Topic:     topicName,
-		Partition: c.Partition,
-		MinBytes:  c.MinBatchBytes,
-		MaxBytes:  c.MaxBatchBytes,
+		Brokers:  c.Brokers,
+		Topic:    topicName,
+		GroupID:  c.ConsumerGroup,
+		MinBytes: c.MinBatchBytes,
+		MaxBytes: c.MaxBatchBytes,
 	}
 }
 

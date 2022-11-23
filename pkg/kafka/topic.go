@@ -43,6 +43,7 @@ func (t *Topic) ConnectWriter() {
 		Addr:       kafka.TCP(t.parent.Brokers...),
 		Topic:      fmt.Sprintf("%s_%s", t.parent.Prefix, t.name),
 		BatchBytes: int64(t.parent.MaxBatchBytes),
+		Async:      true,
 	}
 }
 

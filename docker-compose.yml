@@ -45,10 +45,14 @@ services:
 #    depends_on:
 #      - zookeeper
   pgarrowkafka:
+    environment:
+      PGDATABASE: postgres
     build: ./docker/pgarrowkafka
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
   kafkaarrowpg:
+    environment:
+      PGDATABASE: dest
     build: ./docker/kafkaarrowpg
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml

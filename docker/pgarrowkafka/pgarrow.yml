@@ -1,7 +1,8 @@
 ---
 debug: true
 kafka_config:
-  address: "kafka:9092"
+  brokers:
+    - "kafka:9092"
 pg_config:
   dsn:
     password: pgarrow
