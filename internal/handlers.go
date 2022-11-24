@@ -23,7 +23,7 @@ func HandlePgArrowKafka() {
 		log.Fatal(err)
 	}
 	for {
-		t, err := pgConn.NextTransaction()
+		t, err := pgConn.NextTransactions()
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -20,7 +20,7 @@ func (c *Conn) StartRepl() (err error) {
 		return err
 	}
 
-	_, err = pglogrepl.CreateReplicationSlot(context.Background(), c.conn, c.config.Slot, "pgoutput",
+	_, err = pglogrepl.CreateReplicationSlot(context.Background(), c.rConn, c.config.Slot, "pgoutput",
 		pglogrepl.CreateReplicationSlotOptions{})
 	if pgErr, ok := err.(*pgconn.PgError); ok {
 		if pgErr.Code == "42710" {
@@ -38,7 +38,7 @@ func (c *Conn) StartRepl() (err error) {
 	}
 	err = pglogrepl.StartReplication(
 		context.Background(),
-		c.conn,
+		c.rConn,
 		c.config.Slot,
 		c.XLogPos,
 		pglogrepl.StartReplicationOptions{
@@ -50,7 +50,8 @@ func (c *Conn) StartRepl() (err error) {
 	return nil
 }
 
-func (c *Conn) NextTransaction() (t Transaction, err error) {
+// NextTransactions reads the next transaction and returns. For TRUNCATE this could be more than one.
+func (c *Conn) NextTransactions() (t Transaction, err error) {
 	standbyMessageTimeout := time.Millisecond * c.config.standbyMessageTimeout
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 
@@ -63,7 +64,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 	)
 	for {
 		if time.Now().After(nextStandbyMessageDeadline) {
-			err = pglogrepl.SendStandbyStatusUpdate(context.Background(), c.conn, pglogrepl.StandbyStatusUpdate{WALWritePosition: c.XLogPos})
+			err = pglogrepl.SendStandbyStatusUpdate(context.Background(), c.rConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: c.XLogPos})
 			if err != nil {
 				log.Fatalln("SendStandbyStatusUpdate failed:", err)
 			}
@@ -72,7 +73,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 		}
 
 		ctxDeadline, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
-		rawMsg, err = c.conn.ReceiveMessage(ctxDeadline)
+		rawMsg, err = c.rConn.ReceiveMessage(ctxDeadline)
 		cancel()
 		if err != nil {
 			if pgconn.Timeout(err) {
@@ -148,11 +149,13 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 				log.Debugf("INSERT INTO %s.%s: %v", relationInfo.Namespace, relationInfo.RelationName, relationInfo)
 
 				t = Transaction{
-					LSN:       uint64(xld.WALStart),
-					Type:      "INSERT",
-					Namespace: relationInfo.Namespace,
-					RelName:   relationInfo.RelationName,
-					Values:    newValues,
+					LSN:  uint64(xld.WALStart),
+					Type: "INSERT",
+					Tables: Tables{Table{
+						Namespace: relationInfo.Namespace,
+						TableName: relationInfo.RelationName,
+					}},
+					Values: newValues,
 				}
 				log.Debug(t.Sql())
 				return t, err
@@ -173,12 +176,14 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 				originalValues := ColValsFromLogMsg(logicalMsg.OldTuple.Columns, relationInfo)
 				whereVals := WhereFromLogMsg(c.relationMessages[logicalMsg.RelationID].Columns, originalValues)
 				t = Transaction{
-					LSN:       uint64(xld.WALStart),
-					Type:      "UPDATE",
-					Namespace: relationInfo.Namespace,
-					RelName:   relationInfo.RelationName,
-					Values:    newValues,
-					Where:     whereVals,
+					LSN:  uint64(xld.WALStart),
+					Type: "UPDATE",
+					Tables: Tables{Table{
+						Namespace: relationInfo.Namespace,
+						TableName: relationInfo.RelationName,
+					}},
+					Values: newValues,
+					Where:  whereVals,
 				}
 				return t, err
 			case *pglogrepl.DeleteMessage:
@@ -192,28 +197,33 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 				oldValues := ColValsFromLogMsg(logicalMsg.OldTuple.Columns, relationInfo)
 				whereVals := WhereFromLogMsg(c.relationMessages[logicalMsg.RelationID].Columns, oldValues)
 				t = Transaction{
-					LSN:       uint64(xld.WALStart),
-					Type:      "DELETE",
-					Namespace: relationInfo.Namespace,
-					RelName:   relationInfo.RelationName,
-					Where:     whereVals,
+					LSN:  uint64(xld.WALStart),
+					Type: "DELETE",
+					Tables: Tables{Table{
+						Namespace: relationInfo.Namespace,
+						TableName: relationInfo.RelationName,
+					}},
+					Where: whereVals,
 				}
 				return t, err
 
 			case *pglogrepl.TruncateMessage:
 				log.Debug("TRUNCATE MESSSAGE")
 				log.Debug(logicalMsg)
-				relationInfo, ok = c.relationMessages[logicalMsg.RelationNum]
-				if !ok {
-					log.Fatalf("unknown relation ID %d", logicalMsg.RelationNum)
+				var tables Tables
+				var table Table
+				for _, oid := range logicalMsg.RelationIDs {
+					if table, err = c.GetTableFromOID(oid); err != nil {
+						log.Fatalf("could not retrieve relation OID %d", logicalMsg.RelationNum)
+					}
+					tables = append(tables, table)
 				}
 				t = Transaction{
-					LSN:       uint64(xld.WALStart),
-					Type:      "TRUNCATE",
-					Namespace: relationInfo.Namespace,
-					RelName:   relationInfo.RelationName,
+					LSN:    uint64(xld.WALStart),
+					Type:   "TRUNCATE",
+					Tables: tables,
 				}
-				return t, nil
+				return t, err
 
 			case *pglogrepl.TypeMessage:
 				fmt.Println("TYPE MESSSAGE")
