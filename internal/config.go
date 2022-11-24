@@ -78,4 +78,5 @@ func NewConfig() (config Config, err error) {
 func (config *Config) Initialize() {
 	config.KafkaConfig.Initialize()
 	config.PgConfig.Initialize()
+	config.PgConfig.DSN["replication"] = "database"
 }

@@ -1,8 +1,10 @@
 package pg
 
 import (
+	"fmt"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
+	"strconv"
 )
 
 type RelationMessages map[uint32]*pglogrepl.RelationMessage
@@ -10,8 +12,9 @@ type RelationMessages map[uint32]*pglogrepl.RelationMessage
 type Conn struct {
 	config           *Config
 	conn             *pgconn.PgConn
-	sysIdent         pglogrepl.IdentifySystemResult
 	relationMessages RelationMessages
+	XLogPos          pglogrepl.LSN
+	//sysIdent         pglogrepl.IdentifySystemResult
 }
 
 func NewConn(conf *Config) (c *Conn) {
@@ -19,6 +22,11 @@ func NewConn(conf *Config) (c *Conn) {
 		config:           conf,
 		relationMessages: make(RelationMessages),
 	}
+}
+
+func (c Conn) Clone() (new *Conn) {
+	newConfig := c.config.Clone()
+	return NewConn(&newConfig)
 }
 
 func (c *Conn) Connect() (err error) {
@@ -34,11 +42,6 @@ func (c *Conn) Connect() (err error) {
 		c.conn = nil
 		return err
 	}
-	c.sysIdent, err = pglogrepl.IdentifySystem(ctx, c.conn)
-	if err != nil {
-		log.Fatalln("IdentifySystem failed:", err)
-	}
-	log.Info("SystemID:", c.sysIdent.SystemID, "Timeline:", c.sysIdent.Timeline, "XLogPos:", c.sysIdent.XLogPos, "DBName:", c.sysIdent.DBName)
 
 	return nil
 }
@@ -73,11 +76,70 @@ func (c *Conn) RunSQL(sql string) (err error) {
 	return cur.Close()
 }
 
-//func (c *Conn) RedoTransaction(t Transaction) (err error) {
-//
-//	if err = c.Connect(); err != nil {
-//		return err
-//	}
-//	cur := c.conn.ExecParams(ctx, t.ParamSQL(), t.ParamValues(), t.ParamOIDs(), nil, nil)
-//	return cur.Close()
-//}
+func (c *Conn) GetRows(query string, args []string) (answer []map[string]string, err error) {
+	if err = c.Connect(); err != nil {
+		return nil, err
+	}
+	log.Debugf("Running SQL: %s with args %v", query, args)
+	var bArgs [][]byte
+	for _, arg := range args {
+		bArgs = append(bArgs, []byte(arg))
+	}
+	cur := c.conn.ExecParams(ctx, query, bArgs, nil, nil, nil)
+	var hdr []string
+	for _, col := range cur.FieldDescriptions() {
+		hdr = append(hdr, col.Name)
+	}
+	for cur.NextRow() {
+		row := make(map[string]string)
+		for i, f := range cur.Values() {
+			row[hdr[i]] = string(f)
+		}
+		answer = append(answer, row)
+	}
+	_, err = cur.Close()
+	return answer, err
+}
+
+func (c *Conn) GetSlotInfo() (sis slotInfos, err error) {
+	sis = make(slotInfos)
+	results, err := c.GetRows("select slot_name, active, restart_lsn from pg_replication_slots", []string{})
+	for _, result := range results {
+		if name, ok := result["slot_name"]; !ok {
+			return slotInfos{}, fmt.Errorf("query results misses `slot_name` field")
+		} else if active, ok := result["active"]; !ok {
+			return slotInfos{}, fmt.Errorf("query results misses `active` field")
+		} else if bActive, err := strconv.ParseBool(active); err != nil {
+			return slotInfos{}, err
+		} else if restart, ok := result["restart_lsn"]; !ok {
+			return slotInfos{}, fmt.Errorf("query results misses `restart_lsn` field")
+		} else if restartLsn, err := pglogrepl.ParseLSN(restart); err != nil {
+			return slotInfos{}, err
+		} else {
+			log.Debugf("Slot: %s, active: %s, restartLSN: %s", name, active, restartLsn)
+			sis[name] = slotInfo{
+				name:       name,
+				active:     bActive,
+				restartLsn: restartLsn,
+			}
+		}
+	}
+	return sis, nil
+}
+
+func (c *Conn) GetXLogPos() (pglogrepl.LSN, error) {
+	tmpConn := c.Clone()
+	defer tmpConn.MustClose()
+	delete(tmpConn.config.DSN, "replication")
+	if slots, err := tmpConn.GetSlotInfo(); err != nil {
+		return 0, err
+	} else if slot, ok := slots[c.config.Slot]; !ok {
+		return 0, fmt.Errorf("could not find slot info for this slot")
+	} else if slot.active {
+		return 0, fmt.Errorf("slot %s is already active", slot.name)
+	} else {
+		c.XLogPos = slot.restartLsn
+		log.Debugf("restart LSN for slot %s: %d", slot.name, c.XLogPos)
+	}
+	return c.XLogPos, nil
+}

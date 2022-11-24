@@ -24,3 +24,11 @@ func (d Dsn) ConnString() (dsn string) {
 	}
 	return strings.Join(pairs[:], " ")
 }
+
+func (d Dsn) Clone() (new Dsn) {
+	new = make(Dsn)
+	for k, v := range d {
+		new[k] = v
+	}
+	return new
+}

@@ -33,11 +33,14 @@ func (c *Conn) StartRepl() (err error) {
 	} else {
 		log.Info("Created temporary replication slot:", c.config.Slot)
 	}
+	if _, err = c.GetXLogPos(); err != nil {
+		return err
+	}
 	err = pglogrepl.StartReplication(
 		context.Background(),
 		c.conn,
 		c.config.Slot,
-		c.sysIdent.XLogPos,
+		c.XLogPos,
 		pglogrepl.StartReplicationOptions{
 			PluginArgs: []string{"proto_version '1'", "publication_names 'pgarrow'"}})
 	if err != nil {
@@ -60,7 +63,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 	)
 	for {
 		if time.Now().After(nextStandbyMessageDeadline) {
-			err = pglogrepl.SendStandbyStatusUpdate(context.Background(), c.conn, pglogrepl.StandbyStatusUpdate{WALWritePosition: c.sysIdent.XLogPos})
+			err = pglogrepl.SendStandbyStatusUpdate(context.Background(), c.conn, pglogrepl.StandbyStatusUpdate{WALWritePosition: c.XLogPos})
 			if err != nil {
 				log.Fatalln("SendStandbyStatusUpdate failed:", err)
 			}
@@ -220,7 +223,7 @@ func (c *Conn) NextTransaction() (t Transaction, err error) {
 				log.Infof("Unknown message type in pgoutput stream: %T", logicalMsg)
 			}
 
-			c.sysIdent.XLogPos = xld.WALStart + pglogrepl.LSN(len(xld.WALData))
+			c.XLogPos = xld.WALStart + pglogrepl.LSN(len(xld.WALData))
 		}
 	}
 }
