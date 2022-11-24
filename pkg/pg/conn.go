@@ -76,34 +76,36 @@ func (c *Conn) RunSQL(sql string) (err error) {
 	return cur.Close()
 }
 
-func (c *Conn) GetRows(query string, args []string) (answer []map[string]string, err error) {
+func (c *Conn) GetRows(query string) (answer []map[string]string, err error) {
 	if err = c.Connect(); err != nil {
 		return nil, err
 	}
-	log.Debugf("Running SQL: %s with args %v", query, args)
-	var bArgs [][]byte
-	for _, arg := range args {
-		bArgs = append(bArgs, []byte(arg))
+	log.Debugf("Running SQL: %s", query)
+	cur := c.conn.Exec(ctx, query)
+	if next := cur.NextResult(); !next {
+		return nil, fmt.Errorf("query did not return results: %s", query)
 	}
-	cur := c.conn.ExecParams(ctx, query, bArgs, nil, nil, nil)
+	result := cur.ResultReader()
 	var hdr []string
-	for _, col := range cur.FieldDescriptions() {
+	for _, col := range result.FieldDescriptions() {
 		hdr = append(hdr, col.Name)
 	}
-	for cur.NextRow() {
+	for result.NextRow() {
 		row := make(map[string]string)
-		for i, f := range cur.Values() {
+		for i, f := range result.Values() {
 			row[hdr[i]] = string(f)
 		}
 		answer = append(answer, row)
 	}
-	_, err = cur.Close()
-	return answer, err
+	if _, err = result.Close(); err != nil {
+		return nil, err
+	}
+	return answer, cur.Close()
 }
 
 func (c *Conn) GetSlotInfo() (sis slotInfos, err error) {
 	sis = make(slotInfos)
-	results, err := c.GetRows("select slot_name, active, restart_lsn from pg_replication_slots", []string{})
+	results, err := c.GetRows("select slot_name, active, restart_lsn from pg_replication_slots")
 	for _, result := range results {
 		if name, ok := result["slot_name"]; !ok {
 			return slotInfos{}, fmt.Errorf("query results misses `slot_name` field")
@@ -128,10 +130,10 @@ func (c *Conn) GetSlotInfo() (sis slotInfos, err error) {
 }
 
 func (c *Conn) GetXLogPos() (pglogrepl.LSN, error) {
-	tmpConn := c.Clone()
-	defer tmpConn.MustClose()
-	delete(tmpConn.config.DSN, "replication")
-	if slots, err := tmpConn.GetSlotInfo(); err != nil {
+	//tmpConn := c.Clone()
+	//defer tmpConn.MustClose()
+	//delete(tmpConn.config.DSN, "replication")
+	if slots, err := c.GetSlotInfo(); err != nil {
 		return 0, err
 	} else if slot, ok := slots[c.config.Slot]; !ok {
 		return 0, fmt.Errorf("could not find slot info for this slot")
