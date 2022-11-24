@@ -8,7 +8,8 @@ services:
     - ./:/host
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
   postgres:
-    image: postgres
+    #image: postgres
+    image: postgres:11
     command: ['postgres', '-c', 'config_file=/etc/postgresql/postgresql.conf']
     environment:
       POSTGRES_PASSWORD: pgarrow
@@ -46,7 +47,7 @@ services:
 #      - zookeeper
   pgarrowkafka:
     environment:
-      PGDATABASE: postgres
+      PGDATABASE: src
     build: ./docker/pgarrowkafka
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
