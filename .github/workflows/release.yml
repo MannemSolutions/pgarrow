@@ -29,11 +29,12 @@ jobs:
         uses: softprops/action-gh-release@v1
 
       - name: Build and release binaries
-        uses: wangyoucao577/go-release-action@v1.19
+        uses: wangyoucao577/go-release-action@v1.33
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
+          goversion: ${{ env.GO_VERSION }}
           project_path: "./cmd/arrow"
           binary_name: arrow
           extra_files: LICENSE README.md
