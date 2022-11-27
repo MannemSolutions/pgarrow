@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+
 	"go.uber.org/zap"
 )
 

@@ -2,8 +2,9 @@ package pg
 
 import (
 	"fmt"
-	"github.com/jackc/pglogrepl"
 	"strings"
+
+	"github.com/jackc/pglogrepl"
 )
 
 type ColumnValues map[string]string

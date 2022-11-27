@@ -1,11 +1,11 @@
 package internal
 
 import (
+	"os"
+
 	"github.com/mannemsolutions/pgarrrow/pkg/kafka"
 	"github.com/mannemsolutions/pgarrrow/pkg/pg"
 	"github.com/mannemsolutions/pgarrrow/pkg/rabbitmq"
-	"os"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

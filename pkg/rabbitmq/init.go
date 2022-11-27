@@ -2,6 +2,7 @@ package rabbitmq
 
 import (
 	"context"
+
 	"go.uber.org/zap"
 )
 

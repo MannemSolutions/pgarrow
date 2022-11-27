@@ -3,12 +3,13 @@ package internal
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
+
 	"github.com/mannemsolutions/pgarrrow/pkg/kafka"
 	"github.com/mannemsolutions/pgarrrow/pkg/pg"
 	"github.com/mannemsolutions/pgarrrow/pkg/rabbitmq"
 	"gopkg.in/yaml.v2"
-	"os"
-	"path/filepath"
 )
 
 type Config struct {

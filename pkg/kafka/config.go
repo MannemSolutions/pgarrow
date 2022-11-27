@@ -3,8 +3,9 @@ package kafka
 import (
 	"context"
 	"fmt"
-	"github.com/segmentio/kafka-go"
 	"time"
+
+	"github.com/segmentio/kafka-go"
 )
 
 type Config struct {

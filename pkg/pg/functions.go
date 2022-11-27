@@ -2,9 +2,10 @@ package pg
 
 import (
 	"fmt"
-	"github.com/jackc/pgx/v5/pgtype"
 	"regexp"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var (

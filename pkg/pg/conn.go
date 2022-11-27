@@ -2,9 +2,10 @@ package pg
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
-	"strconv"
 )
 
 type RelationMessages map[uint32]*pglogrepl.RelationMessage

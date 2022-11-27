@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+
 	"github.com/mannemsolutions/pgarrrow/pkg/kafka"
 	"github.com/mannemsolutions/pgarrrow/pkg/pg"
 	"github.com/mannemsolutions/pgarrrow/pkg/rabbitmq"
