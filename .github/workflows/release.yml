@@ -6,7 +6,7 @@ on:
       - 'v*' # Push events to matching v*, i.e. v0.2.19, v0.2.14a
 
 env:
-  GO_VERSION: 1.16
+  GO_VERSION: 1.19
 
 jobs:
   release:
