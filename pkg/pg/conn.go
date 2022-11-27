@@ -133,30 +133,33 @@ func (c *Conn) GetRows(query string) (answer []map[string]string, err error) {
 	return answer, cur.Close()
 }
 
-func (c *Conn) getSlotInfo() (sis slotInfos, err error) {
-	sis = make(slotInfos)
-	results, err := c.GetRows("select slot_name, active, restart_lsn from pg_replication_slots")
-	for _, result := range results {
-		if name, ok := result["slot_name"]; !ok {
-			return slotInfos{}, fmt.Errorf("query results misses `slot_name` field")
-		} else if active, ok := result["active"]; !ok {
-			return slotInfos{}, fmt.Errorf("query results misses `active` field")
-		} else if bActive, err := strconv.ParseBool(active); err != nil {
-			return slotInfos{}, err
-		} else if restart, ok := result["restart_lsn"]; !ok {
-			return slotInfos{}, fmt.Errorf("query results misses `restart_lsn` field")
-		} else if restartLsn, err := pglogrepl.ParseLSN(restart); err != nil {
-			return slotInfos{}, err
-		} else {
-			log.Debugf("Slot: %s, active: %s, restartLSN: %s", name, active, restartLsn)
-			sis[name] = slotInfo{
-				name:       name,
-				active:     bActive,
-				restartLsn: restartLsn,
+func (c *Conn) getSlotInfo() (slotInfos, error) {
+	if results, err := c.GetRows("select slot_name, active, restart_lsn from pg_replication_slots"); err != nil {
+		return slotInfos{}, err
+	} else {
+		sis := make(slotInfos)
+		for _, result := range results {
+			if name, ok := result["slot_name"]; !ok {
+				return slotInfos{}, fmt.Errorf("query results misses `slot_name` field")
+			} else if active, ok := result["active"]; !ok {
+				return slotInfos{}, fmt.Errorf("query results misses `active` field")
+			} else if bActive, err := strconv.ParseBool(active); err != nil {
+				return slotInfos{}, err
+			} else if restart, ok := result["restart_lsn"]; !ok {
+				return slotInfos{}, fmt.Errorf("query results misses `restart_lsn` field")
+			} else if restartLsn, err := pglogrepl.ParseLSN(restart); err != nil {
+				return slotInfos{}, err
+			} else {
+				log.Debugf("Slot: %s, active: %s, restartLSN: %s", name, active, restartLsn)
+				sis[name] = slotInfo{
+					name:       name,
+					active:     bActive,
+					restartLsn: restartLsn,
+				}
 			}
 		}
+		return sis, nil
 	}
-	return sis, nil
 }
 
 func (c *Conn) GetXLogPos() (pglogrepl.LSN, error) {

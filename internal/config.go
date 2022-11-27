@@ -86,8 +86,14 @@ func NewConfig() (config Config, err error) {
 }
 
 func (config *Config) Initialize() {
-	config.RabbitMqConfig.Initialize()
-	config.KafkaConfig.Initialize()
-	config.PgConfig.Initialize()
+	if err := config.RabbitMqConfig.Initialize(); err != nil {
+		log.Fatalf("failed to initialize config: %e", err)
+	}
+	if err := config.KafkaConfig.Initialize(); err != nil {
+		log.Fatalf("failed to initialize config: %e", err)
+	}
+	if err := config.PgConfig.Initialize(); err != nil {
+		log.Fatalf("failed to initialize config: %e", err)
+	}
 	config.PgConfig.DSN["replication"] = "database"
 }

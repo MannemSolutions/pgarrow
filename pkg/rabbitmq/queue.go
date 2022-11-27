@@ -14,36 +14,38 @@ type Queue struct {
 	queue   amqp.Queue
 }
 
-func (c *Queue) Connect() (err error) {
-	if c.conn != nil {
+func (q *Queue) Connect() (err error) {
+	if q.conn != nil {
 		log.Info("RabbitMQ connection already initialized")
-	} else if c.conn, err = amqp.Dial(c.config.Url); err != nil {
+	} else if q.conn, err = amqp.Dial(q.config.Url); err != nil {
 		return err
 	}
-	if c.channel != nil {
+	if q.channel != nil {
 		log.Info("RabbitMQ channel already initialized")
-	} else if c.channel, err = c.conn.Channel(); err != nil {
+	} else if q.channel, err = q.conn.Channel(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (c *Queue) MustClose() {
-	if err := c.Close(); err != nil {
+func (q *Queue) MustClose() {
+	if err := q.Close(); err != nil {
 		log.Fatalf("Error closing pg connection: %e", err)
 	}
 }
 
-func (q Queue) Close() (err error) {
+func (q *Queue) Close() (err error) {
 	if q.channel == nil {
 		log.Debugf("channel not defined")
 	} else if q.channel.IsClosed() {
 		log.Debugf("channel was already closed")
 	} else if err = q.channel.Close(); err != nil {
 		return err
+	} else {
+		q.channel = nil
 	}
-	q.channel = nil
+
 	if q.conn == nil {
 		log.Debugf("connection not defined")
 	} else if q.conn.IsClosed() {
@@ -55,18 +57,18 @@ func (q Queue) Close() (err error) {
 	return nil
 }
 
-func (c *Queue) CreateQueue() (err error) {
-	if c.queue.Name != "" {
+func (q *Queue) CreateQueue() (err error) {
+	if q.queue.Name != "" {
 		log.Debugf("Queue already initialized")
 		return nil
 	}
-	if err = c.Connect(); err != nil {
+	if err = q.Connect(); err != nil {
 		return err
 	}
-	c.queue, err = c.channel.QueueDeclare(
-		c.config.Queue,
-		!c.config.Transient, // durable
-		c.config.AutoDelete, // delete when unused
+	q.queue, err = q.channel.QueueDeclare(
+		q.config.Queue,
+		!q.config.Transient, // durable
+		q.config.AutoDelete, // delete when unused
 		false,               // exclusive
 		false,               // no-wait
 		nil,                 // arguments
@@ -107,17 +109,15 @@ func (q Queue) Process(PostProcessor func([]byte) error) (err error) {
 		return err
 	}
 
-	var forever chan struct{}
-
-	go func() {
-		for delivery := range deliveries {
-			log.Debugf("received a message of %d bytes", len(delivery.Body))
-			PostProcessor(delivery.Body)
-			delivery.Ack(false)
+	for delivery := range deliveries {
+		log.Debugf("received a message of %d bytes", len(delivery.Body))
+		if err = PostProcessor(delivery.Body); err != nil {
+			return err
 		}
-	}()
+		if err = delivery.Ack(false); err != nil {
+			return err
+		}
+	}
 
-	log.Info(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
 	return nil
 }

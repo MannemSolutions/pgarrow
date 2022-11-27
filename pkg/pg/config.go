@@ -28,6 +28,8 @@ func (c Config) Clone() (newConfig Config) {
 		Slot:                  c.Slot,
 		standbyMessageTimeout: c.standbyMessageTimeout,
 	}
-	newConfig.Initialize()
+	if err := newConfig.Initialize(); err != nil {
+		log.Fatalf("failed to initialize this config: %e", err)
+	}
 	return newConfig
 }

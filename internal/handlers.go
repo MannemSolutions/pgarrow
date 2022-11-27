@@ -89,6 +89,9 @@ func HandlePgArrowRabbit(config Config) (err error) {
 			return pgErr
 		}
 		raw, pgErr := t.Dump()
+		if pgErr != nil {
+			return pgErr
+		}
 		if config.Debug {
 			log.Debugf("Transaction (%d bytes): %s", len(raw), string(raw))
 		}

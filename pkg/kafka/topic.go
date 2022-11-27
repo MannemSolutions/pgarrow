@@ -13,7 +13,6 @@ type Topic struct {
 	reader *kafka.Reader
 	writer *kafka.Writer
 	parent *Config
-	batch  *kafka.Batch
 }
 
 func (t *Topic) Connect() (err error) {

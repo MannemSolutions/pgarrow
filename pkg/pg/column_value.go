@@ -77,7 +77,7 @@ func (ckvs ColumnValues) SetSQL() string {
 	if len(parts) == 0 {
 		log.Fatal("Seems we are about to run an update query with an empty SET statement!!!")
 	}
-	return fmt.Sprintf("%s", strings.Join(parts, ", "))
+	return strings.Join(parts, ", ")
 }
 
 func (ckvs ColumnValues) WhereSQL() string {
@@ -85,7 +85,7 @@ func (ckvs ColumnValues) WhereSQL() string {
 	if len(parts) == 0 {
 		log.Fatal("Seems we are about to run a query without WHERE statement!!!")
 	}
-	return fmt.Sprintf("%s", strings.Join(parts, " AND "))
+	return strings.Join(parts, " AND ")
 }
 
 // ColumnValue is an array of columns and values that we will use to create  the keylist.
