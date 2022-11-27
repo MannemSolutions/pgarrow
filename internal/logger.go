@@ -3,6 +3,7 @@ package internal
 import (
 	"github.com/mannemsolutions/pgarrrow/pkg/kafka"
 	"github.com/mannemsolutions/pgarrrow/pkg/pg"
+	"github.com/mannemsolutions/pgarrrow/pkg/rabbitmq"
 	"os"
 
 	"go.uber.org/zap"
@@ -67,6 +68,7 @@ func initLogger(logFilePath string) {
 func initRemoteLoggers() {
 	pg.InitLogger(log)
 	kafka.InitLogger(log)
+	rabbitmq.InitLogger(log)
 }
 
 func enableDebug(debug bool) {

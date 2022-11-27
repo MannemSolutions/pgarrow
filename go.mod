@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/jackc/pglogrepl v0.0.0-20221028002905-994c5de07171
 	github.com/jackc/pgx/v5 v5.1.1
+	github.com/rabbitmq/amqp091-go v1.5.0
 	github.com/segmentio/kafka-go v0.4.38
 	go.uber.org/zap v1.23.0
 	gopkg.in/yaml.v2 v2.4.0

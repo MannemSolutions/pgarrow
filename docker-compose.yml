@@ -57,8 +57,23 @@ services:
     build: ./docker/kafkaarrowpg
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
-  rabbitmq:
+  rabbit:
     image: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: arrow
+      RABBITMQ_DEFAULT_PASS: arrow
     ports:
     - "5672"
     - "15672"
+  pgarrowrabbit:
+    environment:
+      PGDATABASE: src
+    build: ./docker/pgarrowrabbit
+    volumes:
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
+  rabbitarrowpg:
+    environment:
+      PGDATABASE: dest
+    build: ./docker/rabbitarrowpg
+    volumes:
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml

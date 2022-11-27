@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"context"
 	"fmt"
 	"github.com/segmentio/kafka-go"
 	"time"
@@ -83,10 +84,11 @@ func (c *Config) NewTopic(name string) *Topic {
 		name:   name,
 		parent: c,
 	}
-	if c.topics == nil {
-		fmt.Println("not make topics")
-	}
 	c.topics[name] = &t
 
 	return &t
+}
+
+func (c Config) Context() (context.Context, context.CancelFunc) {
+	return context.WithDeadline(ctx, time.Now().Add(c.Deadline))
 }

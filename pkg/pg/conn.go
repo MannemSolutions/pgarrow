@@ -200,3 +200,24 @@ func (c *Conn) GetTableFromOID(oid uint32) (t Table, err error) {
 	}
 	return t, nil
 }
+
+func (c Conn) ProcessMsg(msg []byte) (err error) {
+	log.Debug("Processing messages")
+	log.Debugf("Processing msg (%d bytes)", len(msg))
+	var t Transaction
+	if t, err = TransactionFromBytes(msg); err != nil {
+		return err
+	}
+	sql := t.Sql()
+	if err = c.RunSQL(sql); err == nil {
+		log.Debugf("succesfully ran %s", sql)
+	} else if pgErr, ok := err.(*pgconn.PgError); !ok {
+		return err
+	} else if pgErr.Code == "23505" {
+		return pgErr
+	} else {
+		return pgErr
+	}
+	return nil
+
+}

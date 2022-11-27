@@ -1,10 +1,8 @@
 package kafka
 
 import (
-	"context"
 	"fmt"
 	"github.com/segmentio/kafka-go"
-	"time"
 )
 
 type Topics map[string]*Topic
@@ -77,26 +75,50 @@ func (t *Topic) MultiPublish(multiData [][]byte) (err error) {
 	for _, d := range multiData {
 		msgs = append(msgs, kafka.Message{Value: d})
 	}
-	if err = t.writer.WriteMessages(t.Context(), msgs...); err != nil {
+	tCtx, tCtxCancel := t.parent.Context()
+	defer tCtxCancel()
+	if err = t.writer.WriteMessages(tCtx, msgs...); err != nil {
 		log.Fatal("failed to write messages:", err)
 	}
 	return nil
-}
-
-func (t *Topic) Context() context.Context {
-	c, _ := context.WithDeadline(ctx, time.Now().Add(t.parent.Deadline))
-	return c
 }
 
 func (t *Topic) Consume() (m kafka.Message, err error) {
 	if err = t.ConnectReader(); err != nil {
 		return m, err
 	}
-	if m, err = t.reader.FetchMessage(t.Context()); err != nil {
+	tCtx, tCtxCancel := t.parent.Context()
+	defer tCtxCancel()
+	if m, err = t.reader.FetchMessage(tCtx); err != nil {
 		return m, err
 	}
 	return m, nil
 }
+
 func (t *Topic) Commit(m kafka.Message) (err error) {
-	return t.reader.CommitMessages(t.Context(), m)
+	tCtx, tCtxCancel := t.parent.Context()
+	defer tCtxCancel()
+	return t.reader.CommitMessages(tCtx, m)
+}
+
+func (t Topic) Process(PostProcessor func([]byte) error) (err error) {
+	if err = t.ConnectReader(); err != nil {
+		return err
+	}
+
+	var msg kafka.Message
+	for {
+		//tCtx, tCtxCancel := t.parent.Context()
+		//defer tCtxCancel()
+		if msg, err = t.reader.FetchMessage(ctx); err != nil {
+			log.Debugf("FetchMessage error: %e", err)
+			return err
+		} else if err = PostProcessor(msg.Value); err != nil {
+			log.Debugf("PostProcessor error: %e", err)
+			return err
+		} else if err = t.reader.CommitMessages(ctx, msg); err != nil {
+			log.Debugf("CommitMessages error: %e", err)
+			return err
+		}
+	}
 }

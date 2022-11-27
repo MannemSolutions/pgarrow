@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"github.com/mannemsolutions/pgarrrow/pkg/kafka"
 	"github.com/mannemsolutions/pgarrrow/pkg/pg"
+	"github.com/mannemsolutions/pgarrrow/pkg/rabbitmq"
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
 )
 
 type Config struct {
-	Debug       bool         `yaml:"debug"`
-	LogDest     string       `yaml:"log_dest"`
-	KafkaConfig kafka.Config `yaml:"kafka_config"`
-	PgConfig    pg.Config    `yaml:"pg_config"`
+	Debug          bool            `yaml:"debug"`
+	LogDest        string          `yaml:"log_dest"`
+	KafkaConfig    kafka.Config    `yaml:"kafka_config"`
+	PgConfig       pg.Config       `yaml:"pg_config"`
+	RabbitMqConfig rabbitmq.Config `yaml:"rabbit_config"`
 }
 
 const (
@@ -76,6 +78,7 @@ func NewConfig() (config Config, err error) {
 }
 
 func (config *Config) Initialize() {
+	config.RabbitMqConfig.Initialize()
 	config.KafkaConfig.Initialize()
 	config.PgConfig.Initialize()
 	config.PgConfig.DSN["replication"] = "database"
