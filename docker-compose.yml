@@ -2,17 +2,22 @@ version: '3'
 services:
   builder:
     build: ./docker/builder
+    ports:
+    - "2345:2345"
     volumes:
     - ./:/host
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
   postgres:
-    image: postgres
+    #image: postgres
+    image: postgres:11
+    command: ['postgres', '-c', 'config_file=/etc/postgresql/postgresql.conf']
     environment:
       POSTGRES_PASSWORD: pgarrow
-      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
     ports:
-    - "5432"
+    - '5432:5432'
     volumes:
     - ./:/host
+    - ./config/postgresql.conf:/etc/postgresql/postgresql.conf
 #  zookeeper:
 #    image: 'bitnami/zookeeper:latest'
 #    ports:
@@ -26,37 +31,57 @@ services:
     ports:
       - '9092:9092'
     environment:
-      KAFKA_ENABLE_KRAFT: yes
+      ALLOW_PLAINTEXT_LISTENER: 'yes'
+      KAFKA_ENABLE_KRAFT: 'yes'
       KAFKA_CFG_PROCESS_ROLES: broker,controller
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
 #     KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_BROKER_ID: 1
+#      KAFKA_INTER_BROKER_LISTENER_NAME: CLIENT
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
 #     KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-      ALLOW_PLAINTEXT_LISTENER: yes
 #    depends_on:
 #      - zookeeper
-    networks:
-      - app-tier
-  pgarrow:
-    build: ./docker/pgarrow
-    networks:
-      - app-tier
-  arrowpg:
-    build: ./docker/arrowpg
-    networks:
-      - app-tier
-  rabbitmq:
+  pgarrowkafka:
+    environment:
+      PGDATABASE: src
+      PGARROW_DIRECTION: pgarrowkafka
+    build: ./docker/arrow
+    image: mannemsolutions/arrow
+    volumes:
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
+  kafkaarrowpg:
+    environment:
+      PGDATABASE: dest
+      PGARROW_DIRECTION: kafkaarrowpg
+    build: ./docker/arrow
+    image: mannemsolutions/arrow
+    volumes:
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
+  rabbit:
     image: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: arrow
+      RABBITMQ_DEFAULT_PASS: arrow
     ports:
     - "5672"
     - "15672"
-    networks:
-      - app-tier
-
-networks:
-  app-tier:
-    driver: bridge
+  pgarrowrabbit:
+    environment:
+      PGDATABASE: src
+      PGARROW_DIRECTION: pgarrowrabbit
+    build: ./docker/arrow
+    image: mannemsolutions/arrow
+    volumes:
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
+  rabbitarrowpg:
+    environment:
+      PGDATABASE: dest
+      PGARROW_DIRECTION: rabbitarrowpg
+    build: ./docker/arrow
+    image: mannemsolutions/arrow
+    volumes:
+    - ./config/pgarrow.yml:/etc/pgarrow/config.yaml

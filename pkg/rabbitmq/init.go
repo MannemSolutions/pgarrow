@@ -1,16 +1,14 @@
-package pg
+package rabbitmq
 
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"go.uber.org/zap"
 )
 
 var (
-	log     *zap.SugaredLogger
-	ctx     context.Context
-	typeMap *pgtype.Map
+	log *zap.SugaredLogger
+	ctx context.Context
 )
 
 func InitLogger(logger *zap.SugaredLogger) {

@@ -3,25 +3,32 @@ package internal
 import (
 	"flag"
 	"fmt"
-	"github.com/mannemsolutions/pgarrrow/pkg/arrow"
-	"gopkg.in/yaml.v2"
 	"os"
-	"path"
 	"path/filepath"
-	"strings"
-	"time"
+
+	"github.com/mannemsolutions/pgarrrow/pkg/kafka"
+	"github.com/mannemsolutions/pgarrrow/pkg/pg"
+	"github.com/mannemsolutions/pgarrrow/pkg/rabbitmq"
+	"gopkg.in/yaml.v2"
 )
 
-/*
- * This module reads the config file and returns a config object with all entries from the config yaml file.
- */
+type Config struct {
+	Direction      string          `yaml:"direction"`
+	Debug          bool            `yaml:"debug"`
+	LogDest        string          `yaml:"log_dest"`
+	KafkaConfig    kafka.Config    `yaml:"kafka_config"`
+	PgConfig       pg.Config       `yaml:"pg_config"`
+	RabbitMqConfig rabbitmq.Config `yaml:"rabbit_config"`
+}
 
 const (
-	envConfName     = "PGARROW_CONFIG"
-	defaultConfFile = "/etc/pgarrow/config.yaml"
+	envConfName      = "PGARROW_CONFIG"
+	defaultConfFile  = "/etc/pgarrow/config.yaml"
+	envDirectionName = "PGARROW_DIRECTION"
 )
 
 var (
+	direction  string
 	debug      bool
 	version    bool
 	configFile string
@@ -32,7 +39,9 @@ func ProcessFlags() (err error) {
 		return
 	}
 
-	flag.BoolVar(&debug, "d", false, "Add debugging output")
+	flag.StringVar(&direction, "d", os.Getenv(envDirectionName), "Direction, options are: pgarrowkafka kafkaarrowpg "+
+		"pgarrowrabbit rabbitarrowpg")
+	flag.BoolVar(&debug, "x", false, "Add debugging output")
 	flag.BoolVar(&version, "v", false, "Show version information")
 
 	flag.StringVar(&configFile, "c", os.Getenv(envConfName), "Path to configfile")
@@ -41,7 +50,7 @@ func ProcessFlags() (err error) {
 
 	if version {
 		//nolint
-		fmt.Println(appVersion)
+		fmt.Println(AppVersion)
 		os.Exit(0)
 	}
 
@@ -53,7 +62,7 @@ func ProcessFlags() (err error) {
 	return err
 }
 
-func NewConfig() (config arrow.Config, err error) {
+func NewConfig() (config Config, err error) {
 	if err = ProcessFlags(); err != nil {
 		return
 	}
@@ -66,30 +75,25 @@ func NewConfig() (config arrow.Config, err error) {
 	}
 
 	err = yaml.Unmarshal(yamlConfig, &config)
-	config.Initialize()
-	dir, fileName := path.Split(configFile)
-	jobName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
-	if config.Workdir == "" {
-		config.Workdir = dir
-	}
-
-	if config.LogFile == "" {
-		// If it is emptystring, then don't do fancy stuff with stat on it
-	} else if fileInfo, err := os.Stat(config.LogFile); err != nil {
-		return config, err
-	} else if fileInfo.IsDir() {
-		// is a directory
-		t := time.Now()
-		logFileName := fmt.Sprintf("%s_%s.log", t.Format("2006-01-02"), jobName)
-		config.LogFile = filepath.Join(config.LogFile, logFileName)
-	}
-	if config.EtcdConfig.LockKey == "" {
-		config.EtcdConfig.LockKey = jobName
-	}
-
 	if debug {
 		config.Debug = true
 	}
 
+	config.Direction = direction
+	config.Initialize()
+
 	return config, err
+}
+
+func (config *Config) Initialize() {
+	if err := config.RabbitMqConfig.Initialize(); err != nil {
+		log.Fatalf("failed to initialize config: %e", err)
+	}
+	if err := config.KafkaConfig.Initialize(); err != nil {
+		log.Fatalf("failed to initialize config: %e", err)
+	}
+	if err := config.PgConfig.Initialize(); err != nil {
+		log.Fatalf("failed to initialize config: %e", err)
+	}
+	config.PgConfig.DSN["replication"] = "database"
 }

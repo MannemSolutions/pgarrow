@@ -1,0 +1,13 @@
+---
+debug: true
+kafka_config:
+  brokers:
+    - "kafka:9092"
+pg_config:
+  dsn:
+    password: pgarrow
+    user: postgres
+    host: postgres
+    replication: database
+rabbit_config:
+  url: amqp://arrow:arrow@rabbit:5672/

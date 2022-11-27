@@ -1,0 +1,5 @@
+internal/version.go
+bin
+docker/*/*.arm*
+docker/*/*.aarch*
+docker/*/*.x86*
