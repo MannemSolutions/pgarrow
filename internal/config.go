@@ -12,6 +12,7 @@ import (
 )
 
 type Config struct {
+	Direction      string          `yaml:"direction"`
 	Debug          bool            `yaml:"debug"`
 	LogDest        string          `yaml:"log_dest"`
 	KafkaConfig    kafka.Config    `yaml:"kafka_config"`
@@ -20,11 +21,13 @@ type Config struct {
 }
 
 const (
-	envConfName     = "PGARROW_CONFIG"
-	defaultConfFile = "/etc/pgarrow/config.yaml"
+	envConfName      = "PGARROW_CONFIG"
+	defaultConfFile  = "/etc/pgarrow/config.yaml"
+	envDirectionName = "PGARROW_DIRECTION"
 )
 
 var (
+	direction  string
 	debug      bool
 	version    bool
 	configFile string
@@ -35,7 +38,9 @@ func ProcessFlags() (err error) {
 		return
 	}
 
-	flag.BoolVar(&debug, "d", false, "Add debugging output")
+	flag.StringVar(&direction, "d", os.Getenv(envDirectionName), "Direction, options are: pgarrowkafka kafkaarrowpg "+
+		"pgarrowrabbit rabbitarrowpg")
+	flag.BoolVar(&debug, "x", false, "Add debugging output")
 	flag.BoolVar(&version, "v", false, "Show version information")
 
 	flag.StringVar(&configFile, "c", os.Getenv(envConfName), "Path to configfile")
@@ -69,10 +74,12 @@ func NewConfig() (config Config, err error) {
 	}
 
 	err = yaml.Unmarshal(yamlConfig, &config)
-	config.Initialize()
 	if debug {
 		config.Debug = true
 	}
+
+	config.Direction = direction
+	config.Initialize()
 
 	return config, err
 }

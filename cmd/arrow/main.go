@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	internal.HandlePgArrowKafka()
+	internal.MainHandler()
 }
