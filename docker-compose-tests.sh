@@ -9,7 +9,8 @@ docker-compose up -d "${ARROW_MSGBUS}" postgres builder
 docker exec -u postgres ${COMPOSE_PROJDIR}-postgres-1 /usr/bin/psql -tc "select datname from pg_database where datname='src'" | grep -q src || docker exec -u postgres ${COMPOSE_PROJDIR}-postgres-1 /usr/bin/psql -c '\i /host/config/schema.sql'
 docker exec -ti ${COMPOSE_PROJDIR}-builder-1 /bin/bash -ic "cd /host && make build"
 cp "bin/arrow".* "./docker/arrow/"
-mv "./docker/arrow/arrow.aarch64" "./docker/arrow/arrow.arm64"
+[ -e ./docker/arrow/arrow.aarch64 ] && mv "./docker/arrow/arrow.aarch64" "./docker/arrow/arrow.arm64"
+[ -e ./docker/arrow/arrow.x86_64 ] && mv "./docker/arrow/arrow.x86_64" "./docker/arrow/arrow.amd64"
 cp config/pgarrow.yml "./docker/arrow/"
 docker-compose up -d "pgarrow${ARROW_MSGBUS}" "${ARROW_MSGBUS}arrowpg"
 exit
