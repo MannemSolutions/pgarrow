@@ -6,11 +6,11 @@ import (
 )
 
 type Config struct {
+	AutoDelete bool          `yaml:"auto_delete"`
 	Deadline   time.Duration `yaml:"deadline"`
 	Queue      string        `yaml:"queue"`
-	Url        string        `yaml:"url"`
 	Transient  bool          `yaml:"transient"`
-	AutoDelete bool          `yaml:"auto_delete"`
+	Url        string        `yaml:"url"`
 	queues     Queues
 }
 
