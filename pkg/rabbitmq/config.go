@@ -2,13 +2,15 @@ package rabbitmq
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 )
 
 type Config struct {
 	AutoDelete bool          `yaml:"auto_delete"`
 	Deadline   time.Duration `yaml:"deadline"`
-	Queue      string        `yaml:"queue"`
+	Prefix     string        `yaml:"prefix"`
 	Transient  bool          `yaml:"transient"`
 	Url        string        `yaml:"url"`
 	queues     Queues
@@ -19,8 +21,10 @@ func (c *Config) Initialize() (err error) {
 	if c.Deadline.Milliseconds() < 1 {
 		c.Deadline = time.Second
 	}
-	if c.Queue == "" {
-		c.Queue = "stream"
+	if c.Prefix == "" {
+		c.Prefix = "pgarrow"
+	} else if strings.HasPrefix(c.Prefix, "amq.") {
+		c.Prefix = fmt.Sprintf("%s.%s", "pgarrow", strings.TrimPrefix(c.Prefix, "amq."))
 	}
 	if c.Url == "" {
 		c.Url = "amqp://arrow:arrow@localhost:5672/"
@@ -37,7 +41,7 @@ func (c *Config) NewQueue(name string) *Queue {
 	}
 
 	q := Queue{
-		name:   name,
+		name:   fmt.Sprintf("%s_%s", c.Prefix, name),
 		config: c,
 	}
 	c.queues[name] = &q

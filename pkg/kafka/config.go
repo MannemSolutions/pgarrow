@@ -13,7 +13,7 @@ type Config struct {
 	Deadline      time.Duration `yaml:"deadline"`
 	MaxBatchBytes int           `yaml:"max_batch_bytes"`
 	MinBatchBytes int           `yaml:"min_batch_bytes"`
-	Prefix        string        `yaml:"topic_prefix"`
+	Prefix        string        `yaml:"prefix"`
 	ConsumerGroup string        `yaml:"consumer_group"`
 	topics        Topics
 }
@@ -47,7 +47,6 @@ func (c *Config) Initialize() (err error) {
 }
 
 func (c *Config) ReaderConfig(topicName string) (r kafka.ReaderConfig) {
-	topicName = fmt.Sprintf("%s_%s", c.Prefix, topicName)
 	return kafka.ReaderConfig{
 		Brokers:  c.Brokers,
 		Topic:    topicName,
@@ -73,7 +72,7 @@ func (c *Config) NewTopic(name string) *Topic {
 	}
 
 	t := Topic{
-		name:   name,
+		name:   fmt.Sprintf("%s_%s", c.Prefix, name),
 		parent: c,
 	}
 	c.topics[name] = &t
