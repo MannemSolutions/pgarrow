@@ -1,8 +1,6 @@
 package kafka
 
 import (
-	"fmt"
-
 	"github.com/segmentio/kafka-go"
 )
 
@@ -39,7 +37,7 @@ func (t *Topic) ConnectWriter() {
 	}
 	t.writer = &kafka.Writer{
 		Addr:       kafka.TCP(t.parent.Brokers...),
-		Topic:      fmt.Sprintf("%s_%s", t.parent.Prefix, t.name),
+		Topic:      t.name,
 		BatchBytes: int64(t.parent.MaxBatchBytes),
 		Async:      true,
 	}

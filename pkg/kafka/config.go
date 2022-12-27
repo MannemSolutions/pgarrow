@@ -9,13 +9,11 @@ import (
 )
 
 type Config struct {
+	Brokers       []string      `yaml:"brokers"`
 	Deadline      time.Duration `yaml:"deadline"`
-	MessageBytes  int           `yaml:"max_message_bytes"`
 	MaxBatchBytes int           `yaml:"max_batch_bytes"`
 	MinBatchBytes int           `yaml:"min_batch_bytes"`
-	Network       string        `yaml:"network"`
-	Brokers       []string      `yaml:"brokers"`
-	Prefix        string        `yaml:"topic_prefix"`
+	Prefix        string        `yaml:"prefix"`
 	ConsumerGroup string        `yaml:"consumer_group"`
 	topics        Topics
 }
@@ -24,10 +22,6 @@ type Config struct {
 func (c *Config) Initialize() (err error) {
 	if c.Deadline.Milliseconds() < 1 {
 		c.Deadline = time.Second
-	}
-	if c.MessageBytes < 1 {
-		// Minimum record size would be 96 bytes at the absolute bare minimum
-		c.MessageBytes = 96
 	}
 	if c.MinBatchBytes < 1 {
 		// 1MB (maybe derive sane defaults for performance tests?)
@@ -43,9 +37,6 @@ func (c *Config) Initialize() (err error) {
 	if c.Prefix == "" {
 		c.Prefix = "pgarrow"
 	}
-	if c.Network == "" {
-		c.Network = "tcp"
-	}
 	if len(c.Brokers) == 0 {
 		c.Brokers = []string{"localhost:9092"}
 	}
@@ -56,7 +47,6 @@ func (c *Config) Initialize() (err error) {
 }
 
 func (c *Config) ReaderConfig(topicName string) (r kafka.ReaderConfig) {
-	topicName = fmt.Sprintf("%s_%s", c.Prefix, topicName)
 	return kafka.ReaderConfig{
 		Brokers:  c.Brokers,
 		Topic:    topicName,
@@ -82,7 +72,7 @@ func (c *Config) NewTopic(name string) *Topic {
 	}
 
 	t := Topic{
-		name:   name,
+		name:   fmt.Sprintf("%s_%s", c.Prefix, name),
 		parent: c,
 	}
 	c.topics[name] = &t

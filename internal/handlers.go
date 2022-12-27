@@ -75,7 +75,7 @@ func HandlePgArrowRabbit(config Config) (err error) {
 	log.Debug("Connecting to PostgreSQL")
 	pgConn := pg.NewConn(&config.PgConfig)
 	defer pgConn.MustClose()
-	queue := config.RabbitMqConfig.NewQueue(config.RabbitMqConfig.Queue)
+	queue := config.RabbitMqConfig.NewQueue("stream")
 	defer queue.MustClose()
 	if err = pgConn.StartRepl(); err != nil {
 		return err

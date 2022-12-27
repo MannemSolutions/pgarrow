@@ -7,6 +7,9 @@ pre_build:
 	go mod tidy
 	mkdir -p ./bin
 
+build_local_image:
+	docker build .
+
 build_arrow:
 	go build -o ./bin/arrow.$(uname_p) ./cmd/arrow
 

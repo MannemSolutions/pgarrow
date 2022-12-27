@@ -66,7 +66,7 @@ func (q *Queue) CreateQueue() (err error) {
 		return err
 	}
 	q.queue, err = q.channel.QueueDeclare(
-		q.config.Queue,
+		q.name,
 		!q.config.Transient, // durable
 		q.config.AutoDelete, // delete when unused
 		false,               // exclusive
@@ -81,10 +81,10 @@ func (q Queue) Publish(data []byte) (err error) {
 	defer qCtxCancel()
 
 	return q.channel.PublishWithContext(qCtx,
-		"",             // exchange
-		q.config.Queue, // routing key
-		false,          // mandatory
-		false,          // immediate
+		"",     // exchange
+		q.name, // routing key
+		false,  // mandatory
+		false,  // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        data,
