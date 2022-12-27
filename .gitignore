@@ -3,3 +3,4 @@ bin
 docker/*/*.arm*
 docker/*/*.aarch*
 docker/*/*.x86*
+docker/*/*.amd64*
