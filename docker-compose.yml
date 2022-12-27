@@ -49,16 +49,14 @@ services:
     environment:
       PGDATABASE: src
       PGARROW_DIRECTION: pgarrowkafka
-    build: ./docker/arrow
-    image: mannemsolutions/arrow
+    image: mannemsolutions/pgarrow
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
   kafkaarrowpg:
     environment:
       PGDATABASE: dest
       PGARROW_DIRECTION: kafkaarrowpg
-    build: ./docker/arrow
-    image: mannemsolutions/arrow
+    image: mannemsolutions/pgarrow
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
   rabbit:
@@ -73,15 +71,13 @@ services:
     environment:
       PGDATABASE: src
       PGARROW_DIRECTION: pgarrowrabbit
-    build: ./docker/arrow
-    image: mannemsolutions/arrow
+    image: mannemsolutions/pgarrow
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
   rabbitarrowpg:
     environment:
       PGDATABASE: dest
       PGARROW_DIRECTION: rabbitarrowpg
-    build: ./docker/arrow
-    image: mannemsolutions/arrow
+    image: mannemsolutions/pgarrow
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
