@@ -52,7 +52,7 @@ func (c *Conn) StartRepl() (err error) {
 
 // NextTransactions reads the next transaction and returns. For TRUNCATE this could be more than one.
 func (c *Conn) NextTransactions() (t Transaction, err error) {
-	standbyMessageTimeout := c.config.standbyMessageTimeout
+	standbyMessageTimeout := c.config.StandbyMessageTimeout
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 
 	var (

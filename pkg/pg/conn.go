@@ -3,6 +3,7 @@ package pg
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -217,9 +218,16 @@ func (c Conn) ProcessMsg(msg []byte) (err error) {
 		log.Debugf("succesfully ran %s", sql)
 	} else if pgErr, ok := err.(*pgconn.PgError); !ok {
 		return err
-	} else if pgErr.Code == "23505" {
-		return pgErr
+	} else if pgErrCode, err := strconv.ParseInt(pgErr.Code, 16, 32); err != nil {
+		log.Fatalf("unexpected SQLSTATE %s", pgErr.Code)
+	} else if description, exists := c.config.SkipErrors[pgErrCode]; exists {
+		log.Debugf("skipping error code %d (%s)", pgErrCode, description)
+		return nil
 	} else {
+		log.Error(pgErr)
+		log.Debug("to skip, add this to pg_config.skip_errors:")
+		log.Debugf(" -> %d: \"%s\"",
+			pgErrCode, strings.Replace(pgErr.Message, "\"", "'", -1))
 		return pgErr
 	}
 	return nil
