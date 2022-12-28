@@ -10,7 +10,7 @@ type Topic struct {
 	name   string
 	reader *kafka.Reader
 	writer *kafka.Writer
-	parent *Config
+	config *Config
 }
 
 func (t *Topic) Connect() (err error) {
@@ -25,7 +25,7 @@ func (t *Topic) ConnectReader() (err error) {
 	if t.reader != nil {
 		return nil
 	}
-	if t.reader = kafka.NewReader(t.parent.ReaderConfig(t.name)); err != nil {
+	if t.reader = kafka.NewReader(t.config.ReaderConfig(t.name)); err != nil {
 		log.Fatal("failed to dial leader:", err)
 	}
 	return nil
@@ -36,9 +36,9 @@ func (t *Topic) ConnectWriter() {
 		return
 	}
 	t.writer = &kafka.Writer{
-		Addr:       kafka.TCP(t.parent.Brokers...),
+		Addr:       kafka.TCP(t.config.Brokers...),
 		Topic:      t.name,
-		BatchBytes: int64(t.parent.MaxBatchBytes),
+		BatchBytes: int64(t.config.MaxBatchBytes),
 		Async:      true,
 	}
 }
@@ -92,7 +92,7 @@ func (t *Topic) MultiPublish(multiData [][]byte) (err error) {
 	for _, d := range multiData {
 		msgs = append(msgs, kafka.Message{Value: d})
 	}
-	tCtx, tCtxCancel := t.parent.Context()
+	tCtx, tCtxCancel := t.config.Context()
 	defer tCtxCancel()
 	if err = t.writer.WriteMessages(tCtx, msgs...); err != nil {
 		log.Fatal("failed to write messages:", err)
@@ -104,7 +104,7 @@ func (t *Topic) Consume() (m kafka.Message, err error) {
 	if err = t.ConnectReader(); err != nil {
 		return m, err
 	}
-	tCtx, tCtxCancel := t.parent.Context()
+	tCtx, tCtxCancel := t.config.Context()
 	defer tCtxCancel()
 	if m, err = t.reader.FetchMessage(tCtx); err != nil {
 		return m, err
@@ -113,7 +113,7 @@ func (t *Topic) Consume() (m kafka.Message, err error) {
 }
 
 func (t *Topic) Commit(m kafka.Message) (err error) {
-	tCtx, tCtxCancel := t.parent.Context()
+	tCtx, tCtxCancel := t.config.Context()
 	defer tCtxCancel()
 	return t.reader.CommitMessages(tCtx, m)
 }
