@@ -2,6 +2,8 @@ package kafka
 
 import (
 	"github.com/segmentio/kafka-go"
+	"net"
+	"time"
 )
 
 type Topics map[string]*Topic
@@ -87,17 +89,35 @@ func (t *Topic) MultiPublish(multiData [][]byte) (err error) {
 	if len(multiData) == 0 {
 		return nil
 	}
-	t.ConnectWriter()
 	var msgs []kafka.Message
 	for _, d := range multiData {
 		msgs = append(msgs, kafka.Message{Value: d})
 	}
-	tCtx, tCtxCancel := t.config.Context()
-	defer tCtxCancel()
-	if err = t.writer.WriteMessages(tCtx, msgs...); err != nil {
-		log.Fatal("failed to write messages:", err)
+	for {
+		// Use closure to defer tCtxCancel properly in a loop without leaking
+		err = func() error {
+			t.ConnectWriter()
+			tCtx, tCtxCancel := t.config.Context()
+			defer tCtxCancel()
+			return t.writer.WriteMessages(tCtx, msgs...)
+		}()
+		switch err.(type) {
+		case *net.OpError:
+			log.Errorf("Kafka not available: %v", err)
+			log.Infof("Retrying in 10 seconds")
+			time.Sleep(10 * time.Second)
+		case kafka.Error:
+			log.Errorf("kafka error: (%T): %s", err, err)
+			log.Infof("Retrying in 10 seconds")
+			time.Sleep(10 * time.Second)
+		case nil:
+			log.Debugf("Data written to Kafka: %v", t.writer.Stats())
+			return nil
+		default:
+			log.Errorf("failed to write messages: (%T): %s", err, err)
+			return err
+		}
 	}
-	return nil
 }
 
 func (t *Topic) Consume() (m kafka.Message, err error) {
