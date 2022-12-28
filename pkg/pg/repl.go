@@ -44,7 +44,7 @@ func (c *Conn) StartRepl() (err error) {
 		pglogrepl.StartReplicationOptions{
 			PluginArgs: []string{"proto_version '1'", "publication_names 'pgarrow'"}})
 	if err != nil {
-		log.Fatalln("StartReplication failed:", err)
+		log.Fatal("StartReplication failed:", err)
 	}
 	log.Info("Logical replication started on slot", c.config.Slot)
 	return nil
@@ -66,7 +66,7 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 		if time.Now().After(nextStandbyMessageDeadline) {
 			err = pglogrepl.SendStandbyStatusUpdate(context.Background(), c.rConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: c.XLogPos})
 			if err != nil {
-				log.Fatalln("SendStandbyStatusUpdate failed:", err)
+				log.Fatal("SendStandbyStatusUpdate failed:", err)
 			}
 			log.Debug("Sent Standby status message")
 			nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
@@ -98,7 +98,7 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 		case pglogrepl.PrimaryKeepaliveMessageByteID:
 			pkm, err = pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
 			if err != nil {
-				log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
+				log.Fatal("ParsePrimaryKeepaliveMessage failed:", err)
 			}
 			log.Debug("Primary Keepalive Message =>", "ServerWALEnd:",
 				pkm.ServerWALEnd, "ServerTime:",
@@ -112,7 +112,7 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 		case pglogrepl.XLogDataByteID:
 			xld, err = pglogrepl.ParseXLogData(msg.Data[1:])
 			if err != nil {
-				log.Fatalln("ParseXLogData failed:", err)
+				log.Fatal("ParseXLogData failed:", err)
 			}
 			log.Debug("XLogData =>", "WALStart",
 				xld.WALStart,
