@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"errors"
 	"github.com/segmentio/kafka-go"
 	"net"
 	"time"
@@ -138,6 +139,20 @@ func (t *Topic) Commit(m kafka.Message) (err error) {
 	return t.reader.CommitMessages(tCtx, m)
 }
 
+func processErrorUnWrapper(err error) error {
+	mainError := err
+	for {
+		switch err.(type) {
+		case *net.OpError, kafka.Error:
+			return err
+		case nil:
+			return mainError
+		default:
+			err = errors.Unwrap(err)
+		}
+	}
+}
+
 func (t Topic) Process(PostProcessor func([]byte) error) (err error) {
 	if err = t.ConnectReader(); err != nil {
 		return err
@@ -148,8 +163,16 @@ func (t Topic) Process(PostProcessor func([]byte) error) (err error) {
 		//tCtx, tCtxCancel := t.parent.Context()
 		//defer tCtxCancel()
 		if msg, err = t.reader.FetchMessage(ctx); err != nil {
-			log.Debugf("FetchMessage error: %e", err)
-			return err
+			err = processErrorUnWrapper(err)
+			switch err.(type) {
+			case *net.OpError:
+				log.Errorf("Kafka not available: %v", err)
+			case kafka.Error:
+				log.Errorf("Kafka error: %v", err)
+			default:
+				log.Errorf("I don't understand this error: (%T) -> %v", err, err)
+				return err
+			}
 		} else if err = PostProcessor(msg.Value); err != nil {
 			log.Debugf("PostProcessor error: %e", err)
 			return err
