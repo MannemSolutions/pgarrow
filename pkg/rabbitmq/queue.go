@@ -42,9 +42,8 @@ func (q *Queue) Close() (err error) {
 		log.Debugf("channel was already closed")
 	} else if err = q.channel.Close(); err != nil {
 		return err
-	} else {
-		q.channel = nil
 	}
+	q.channel = nil
 
 	if q.conn == nil {
 		log.Debugf("connection not defined")
@@ -54,6 +53,7 @@ func (q *Queue) Close() (err error) {
 		return err
 	}
 	q.conn = nil
+	q.queue = amqp.Queue{}
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (q Queue) Publish(data []byte) (err error) {
 	qCtx, qCtxCancel := q.config.Context()
 	defer qCtxCancel()
 
-	return q.channel.PublishWithContext(qCtx,
+	err = q.channel.PublishWithContext(qCtx,
 		"",     // exchange
 		q.name, // routing key
 		false,  // mandatory
@@ -89,6 +89,15 @@ func (q Queue) Publish(data []byte) (err error) {
 			ContentType: "application/json",
 			Body:        data,
 		})
+	switch err.(type) {
+	case *amqp.Error:
+		log.Debugf("amqp error: %T: %v", err, err)
+	case nil:
+		return nil
+	default:
+		log.Debugf("Unknown error: %T: %v", err, err)
+	}
+	return err
 }
 
 func (q Queue) Process(PostProcessor func([]byte) error) (err error) {

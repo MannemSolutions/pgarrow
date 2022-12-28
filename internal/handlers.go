@@ -2,6 +2,9 @@ package internal
 
 import (
 	"github.com/mannemsolutions/pgarrrow/pkg/pg"
+	"github.com/rabbitmq/amqp091-go"
+	"net"
+	"time"
 )
 
 func MainHandler() {
@@ -80,23 +83,50 @@ func HandlePgArrowRabbit(config Config) (err error) {
 	if err = pgConn.StartRepl(); err != nil {
 		return err
 	}
-	if err = queue.CreateQueue(); err != nil {
-		return err
-	}
 	for {
 		t, pgErr := pgConn.NextTransactions()
 		if pgErr != nil {
 			return pgErr
 		}
-		raw, pgErr := t.Dump()
-		if pgErr != nil {
-			return pgErr
+		raw, tErr := t.Dump()
+		if tErr != nil {
+			return tErr
 		}
 		if config.Debug {
 			log.Debugf("Transaction (%d bytes): %s", len(raw), string(raw))
 		}
-		if err = queue.Publish(raw); err != nil {
-			return err
+		rErr := func() error {
+			for {
+				err = queue.CreateQueue()
+				switch err.(type) {
+				case nil:
+					log.Debug("Queue created")
+				case *net.OpError, *amqp091.Error:
+					log.Errorf("RabbitMQ not available: %v", err)
+					log.Infof("Retrying in 10 seconds")
+					time.Sleep(10 * time.Second)
+					continue
+				default:
+					log.Errorf("Unknown error: %v", err)
+					return err
+				}
+				if err = queue.Publish(raw); err != nil {
+					log.Errorf("Error while publishing data")
+					log.Infof("Retrying in 10 seconds")
+					time.Sleep(10 * time.Second)
+					if err = queue.Close(); err != nil {
+						log.Errorf("Closing channel")
+						return err
+					}
+					queue = config.RabbitMqConfig.NewQueue("stream")
+				} else {
+					log.Debug("Data published")
+					return nil
+				}
+			}
+		}()
+		if rErr != nil {
+			return rErr
 		}
 	}
 }
