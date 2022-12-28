@@ -50,6 +50,14 @@ func (t *Topic) MustClose() {
 }
 
 func (t *Topic) Close() (err error) {
+	if err = t.CloseReader(); err != nil {
+		return err
+	} else {
+		return t.CloseWriter()
+	}
+}
+
+func (t *Topic) CloseReader() (err error) {
 	if t.reader == nil {
 		return nil
 	}
@@ -57,6 +65,17 @@ func (t *Topic) Close() (err error) {
 		return err
 	}
 	t.reader = nil
+	return nil
+}
+
+func (t *Topic) CloseWriter() (err error) {
+	if t.writer == nil {
+		return nil
+	}
+	if err = t.writer.Close(); err != nil {
+		return err
+	}
+	t.writer = nil
 	return nil
 }
 
