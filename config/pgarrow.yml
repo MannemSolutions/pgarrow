@@ -9,6 +9,6 @@ pg_config:
     user: postgres
     host: postgres
   skip_errors:
-    144645: duplicate key value violates unique constraint
+    23505: duplicate key value violates unique constraint
 rabbit_config:
   url: amqp://arrow:arrow@rabbit:5672/
