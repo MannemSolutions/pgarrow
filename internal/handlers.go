@@ -152,5 +152,4 @@ func HandleRabbitArrowPg(config Config) (err error) {
 			return err
 		}
 	}
-	return nil
 }
