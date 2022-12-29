@@ -206,7 +206,7 @@ func (c *Conn) GetTableFromOID(oid uint32) (t Table, err error) {
 	return t, nil
 }
 
-func (c Conn) ProcessMsg(msg []byte) (err error) {
+func (c *Conn) ProcessMsg(msg []byte) (err error) {
 	log.Debug("Processing messages")
 	log.Debugf("Processing msg (%d bytes)", len(msg))
 	var t Transaction
