@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -39,10 +40,14 @@ func (c *Conn) Connect() (err error) {
 			return nil
 		}
 	}
-	c.rConn, err = pgconn.Connect(ctx, c.config.DSN.ConnString(true))
-	if err != nil {
-		c.rConn = nil
-		return err
+	for {
+		c.rConn, err = pgconn.Connect(ctx, c.config.DSN.ConnString(true))
+		if err == nil {
+			break
+		}
+		log.Errorln("Cannot connect to Postgres:", err.Error())
+		log.Infof("Retrying in 10 seconds")
+		time.Sleep(10 * time.Second)
 	}
 
 	return nil

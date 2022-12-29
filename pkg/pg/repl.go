@@ -16,6 +16,10 @@ import (
 )
 
 func (c *Conn) StartRepl() (err error) {
+	if c.rConn != nil {
+		log.Debugln("rConn already initialized. Assuming we are already replicating")
+		return nil
+	}
 	if err = c.Connect(); err != nil {
 		return err
 	}
@@ -68,7 +72,7 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 			if err != nil {
 				log.Fatal("SendStandbyStatusUpdate failed:", err)
 			}
-			log.Debug("Sent Standby status message")
+			//log.Debug("Sent Standby status message")
 			nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		}
 

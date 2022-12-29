@@ -78,13 +78,21 @@ func HandlePgArrowRabbit(config Config) (err error) {
 	defer pgConn.MustClose()
 	queue := config.RabbitMqConfig.NewQueue("stream")
 	defer queue.MustClose()
-	if err = pgConn.StartRepl(); err != nil {
-		return err
-	}
 	for {
+		if err = pgConn.StartRepl(); err != nil {
+			return err
+		}
 		t, pgErr := pgConn.NextTransactions()
 		if pgErr != nil {
-			return pgErr
+			if err = pgConn.Close(); err != nil {
+				return err
+			}
+			log.Debug(pgErr)
+			//return pgErr
+		}
+		if t.LSN == 0 {
+			log.Debugln("received 0 transaction. Skipping")
+			continue
 		}
 		raw, tErr := t.Dump()
 		if tErr != nil {
