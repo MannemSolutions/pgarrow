@@ -1,7 +1,10 @@
 package rabbitmq
 
 import (
+	"fmt"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"net"
+	"time"
 )
 
 type Queues map[string]*Queue
@@ -15,18 +18,31 @@ type Queue struct {
 }
 
 func (q *Queue) Connect() (err error) {
+	if q.channel != nil {
+		return fmt.Errorf("RabbitMQ channel already initialized")
+	}
 	if q.conn != nil {
 		log.Info("RabbitMQ connection already initialized")
-	} else if q.conn, err = amqp.Dial(q.config.Url); err != nil {
-		return err
+	} else {
+		for {
+			q.conn, err = amqp.Dial(q.config.Url)
+			switch err.(type) {
+			case nil:
+				log.Debug("RabbitMQ connected")
+			case *net.OpError:
+				log.Errorf("RabbitMQ not available: %v", err)
+				log.Infof("Retrying in 10 seconds")
+				time.Sleep(10 * time.Second)
+				continue
+			default:
+				log.Errorf("Unknown error: %v", err)
+				return err
+			}
+			break
+		}
 	}
-	if q.channel != nil {
-		log.Info("RabbitMQ channel already initialized")
-	} else if q.channel, err = q.conn.Channel(); err != nil {
-		return err
-	}
-
-	return nil
+	q.channel, err = q.conn.Channel()
+	return err
 }
 
 func (q *Queue) MustClose() {

@@ -2,8 +2,6 @@ package internal
 
 import (
 	"github.com/mannemsolutions/pgarrrow/pkg/pg"
-	"github.com/rabbitmq/amqp091-go"
-	"net"
 	"time"
 )
 
@@ -97,19 +95,11 @@ func HandlePgArrowRabbit(config Config) (err error) {
 		}
 		rErr := func() error {
 			for {
-				err = queue.CreateQueue()
-				switch err.(type) {
-				case nil:
-					log.Debug("Queue created")
-				case *net.OpError, *amqp091.Error:
-					log.Errorf("RabbitMQ not available: %v", err)
-					log.Infof("Retrying in 10 seconds")
-					time.Sleep(10 * time.Second)
-					continue
-				default:
+				if err = queue.CreateQueue(); err != nil {
 					log.Errorf("Unknown error: %v", err)
 					return err
 				}
+				log.Debug("Queue created")
 				if err = queue.Publish(raw); err != nil {
 					log.Errorf("Error while publishing data")
 					log.Infof("Retrying in 10 seconds")
@@ -138,5 +128,13 @@ func HandleRabbitArrowPg(config Config) (err error) {
 	log.Debug("Connecting to RabbitMQ")
 	queue := config.RabbitMqConfig.NewQueue("stream")
 	defer queue.MustClose()
-	return queue.Process(pgConn.ProcessMsg)
+	for {
+		if err = queue.Process(pgConn.ProcessMsg); err != nil {
+			return err
+		}
+		if err = queue.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
