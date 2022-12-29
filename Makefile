@@ -8,7 +8,7 @@ pre_build:
 	mkdir -p ./bin
 
 build_local_image:
-	docker build .
+	docker build . -t mannemsolutions/pgarrow
 
 build_arrow:
 	go build -o ./bin/arrow.$(uname_p) ./cmd/arrow

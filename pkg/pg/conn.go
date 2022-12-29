@@ -3,6 +3,8 @@ package pg
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -11,17 +13,19 @@ import (
 type RelationMessages map[uint32]*pglogrepl.RelationMessage
 
 type Conn struct {
-	config           *Config
-	rConn            *pgconn.PgConn
-	qConn            *pgconn.PgConn
-	relationMessages RelationMessages
-	XLogPos          pglogrepl.LSN
+	config                      *Config
+	rConn                       *pgconn.PgConn
+	qConn                       *pgconn.PgConn
+	relationMessages            RelationMessages
+	XLogPos                     pglogrepl.LSN
+	lastPrimaryKeepaliveMessage time.Time
 }
 
 func NewConn(conf *Config) (c *Conn) {
 	return &Conn{
-		config:           conf,
-		relationMessages: make(RelationMessages),
+		config:                      conf,
+		relationMessages:            make(RelationMessages),
+		lastPrimaryKeepaliveMessage: time.Now(),
 	}
 }
 
@@ -38,12 +42,16 @@ func (c *Conn) Connect() (err error) {
 			return nil
 		}
 	}
-	c.rConn, err = pgconn.Connect(ctx, c.config.DSN.ConnString(true))
-	if err != nil {
-		c.rConn = nil
-		return err
+	for {
+		c.rConn, err = pgconn.Connect(ctx, c.config.DSN.ConnString(true))
+		if err == nil {
+			break
+		}
+		log.Errorln("Cannot connect to Postgres:", err.Error())
+		log.Infof("Retrying in 10 seconds")
+		time.Sleep(10 * time.Second)
 	}
-
+	log.Debugln("successfully connected to postgres")
 	return nil
 }
 
@@ -81,6 +89,7 @@ func (c *Conn) Close() (err error) {
 		return err
 	}
 	c.qConn = nil
+	log.Debugln("connection successfully closed")
 	return nil
 }
 
@@ -103,7 +112,26 @@ func (c *Conn) RunSQL(sql string) (err error) {
 	}
 	log.Debugf("Running SQL: %s", sql)
 	cur := c.rConn.Exec(ctx, sql)
-	return cur.Close()
+	if err = cur.Close(); err == nil {
+		return nil
+	} else if pgErr, ok := err.(*pgconn.PgError); !ok {
+		log.Error("Unexpected error while running query: (%T)->%v", err, err)
+		return err
+	} else if pgErr.Code != "57P01" {
+		log.Error("unexpected Postgres error while running query: (%T)->%v", pgErr, pgErr)
+		return pgErr
+	} else if closeErr := c.Close(); closeErr != nil {
+		log.Error("tried to resolve SQLSTATE 57P01 while running query, "+
+			"but closing connection failed: (%T)->%v", closeErr, closeErr)
+		return closeErr
+	}
+	log.Info("recovering from SQLSTATE 57P01, rerunning query")
+	if runErr := c.RunSQL(sql); runErr != nil {
+		log.Error("tried to resolve SQLSTATE 57P01 while running query, "+
+			"but rerunning the query failed: (%T)->%v", runErr, runErr)
+		return runErr
+	}
+	return nil
 }
 
 func (c *Conn) GetRows(query string) (answer []map[string]string, err error) {
@@ -205,7 +233,7 @@ func (c *Conn) GetTableFromOID(oid uint32) (t Table, err error) {
 	return t, nil
 }
 
-func (c Conn) ProcessMsg(msg []byte) (err error) {
+func (c *Conn) ProcessMsg(msg []byte) (err error) {
 	log.Debug("Processing messages")
 	log.Debugf("Processing msg (%d bytes)", len(msg))
 	var t Transaction
@@ -217,9 +245,14 @@ func (c Conn) ProcessMsg(msg []byte) (err error) {
 		log.Debugf("succesfully ran %s", sql)
 	} else if pgErr, ok := err.(*pgconn.PgError); !ok {
 		return err
-	} else if pgErr.Code == "23505" {
-		return pgErr
+	} else if description, exists := c.config.SkipErrors[pgErr.Code]; exists {
+		log.Debugf("skipping error code %s (%s)", pgErr.Code, description)
+		return nil
 	} else {
+		log.Error(pgErr)
+		log.Debug("to skip, add this to pg_config.skip_errors:")
+		log.Debugf(" -> \"%s\": \"%s\"",
+			pgErr.Code, strings.Replace(pgErr.Message, "\"", "'", -1))
 		return pgErr
 	}
 	return nil

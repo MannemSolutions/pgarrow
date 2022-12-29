@@ -73,7 +73,7 @@ func (c *Config) NewTopic(name string) *Topic {
 
 	t := Topic{
 		name:   fmt.Sprintf("%s_%s", c.Prefix, name),
-		parent: c,
+		config: c,
 	}
 	c.topics[name] = &t
 

@@ -8,5 +8,7 @@ pg_config:
     password: pgarrow
     user: postgres
     host: postgres
+  skip_errors:
+    23505: duplicate key value violates unique constraint
 rabbit_config:
   url: amqp://arrow:arrow@rabbit:5672/

@@ -21,7 +21,7 @@ func ColValsFromLogMsg(cols []*pglogrepl.TupleDataColumn, relInfo *pglogrepl.Rel
 		case 't': //text
 			val, err := decodeTextColumnData(col.Data, relInfo.Columns[idx].DataType)
 			if err != nil {
-				log.Fatalln("error decoding column data:", err)
+				log.Fatal("error decoding column data:", err)
 			}
 
 			switch v := val.(type) {

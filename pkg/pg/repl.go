@@ -16,6 +16,10 @@ import (
 )
 
 func (c *Conn) StartRepl() (err error) {
+	if c.rConn != nil {
+		log.Debugln("rConn already initialized. Assuming we are already replicating")
+		return nil
+	}
 	if err = c.Connect(); err != nil {
 		return err
 	}
@@ -44,7 +48,7 @@ func (c *Conn) StartRepl() (err error) {
 		pglogrepl.StartReplicationOptions{
 			PluginArgs: []string{"proto_version '1'", "publication_names 'pgarrow'"}})
 	if err != nil {
-		log.Fatalln("StartReplication failed:", err)
+		log.Fatal("StartReplication failed:", err)
 	}
 	log.Info("Logical replication started on slot", c.config.Slot)
 	return nil
@@ -52,7 +56,7 @@ func (c *Conn) StartRepl() (err error) {
 
 // NextTransactions reads the next transaction and returns. For TRUNCATE this could be more than one.
 func (c *Conn) NextTransactions() (t Transaction, err error) {
-	standbyMessageTimeout := c.config.standbyMessageTimeout
+	standbyMessageTimeout := c.config.StandbyMessageTimeout
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 
 	var (
@@ -66,9 +70,9 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 		if time.Now().After(nextStandbyMessageDeadline) {
 			err = pglogrepl.SendStandbyStatusUpdate(context.Background(), c.rConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: c.XLogPos})
 			if err != nil {
-				log.Fatalln("SendStandbyStatusUpdate failed:", err)
+				log.Fatal("SendStandbyStatusUpdate failed:", err)
 			}
-			log.Debug("Sent Standby status message")
+			//log.Debug("Sent Standby status message")
 			nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		}
 
@@ -98,12 +102,16 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 		case pglogrepl.PrimaryKeepaliveMessageByteID:
 			pkm, err = pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
 			if err != nil {
-				log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
+				log.Fatal("ParsePrimaryKeepaliveMessage failed:", err)
 			}
-			log.Debug("Primary Keepalive Message =>", "ServerWALEnd:",
-				pkm.ServerWALEnd, "ServerTime:",
-				pkm.ServerTime, "ReplyRequested:",
-				pkm.ReplyRequested)
+			// This makes sure that the debug log is not flooded when Postgres stops
+			if time.Now().Sub(c.lastPrimaryKeepaliveMessage) > time.Second {
+				log.Debugln("Primary Keepalive Message =>",
+					"ServerWALEnd:", pkm.ServerWALEnd,
+					"ServerTime:", pkm.ServerTime,
+					"ReplyRequested:", pkm.ReplyRequested)
+				c.lastPrimaryKeepaliveMessage = time.Now()
+			}
 
 			if pkm.ReplyRequested {
 				nextStandbyMessageDeadline = time.Time{}
@@ -112,7 +120,7 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 		case pglogrepl.XLogDataByteID:
 			xld, err = pglogrepl.ParseXLogData(msg.Data[1:])
 			if err != nil {
-				log.Fatalln("ParseXLogData failed:", err)
+				log.Fatal("ParseXLogData failed:", err)
 			}
 			log.Debug("XLogData =>", "WALStart",
 				xld.WALStart,

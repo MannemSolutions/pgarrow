@@ -2,6 +2,7 @@ package internal
 
 import (
 	"github.com/mannemsolutions/pgarrrow/pkg/pg"
+	"time"
 )
 
 func MainHandler() {
@@ -39,13 +40,21 @@ func HandlePgArrowKafka(config Config) (err error) {
 	defer pgConn.MustClose()
 	topic := config.KafkaConfig.NewTopic("stream")
 	defer topic.MustClose()
-	if err = pgConn.StartRepl(); err != nil {
-		return err
-	}
 	for {
+		if err = pgConn.StartRepl(); err != nil {
+			return err
+		}
 		t, pgErr := pgConn.NextTransactions()
 		if pgErr != nil {
-			return pgErr
+			if err = pgConn.Close(); err != nil {
+				return err
+			}
+			log.Debug(pgErr)
+			//return pgErr
+		}
+		if t.LSN == 0 {
+			log.Debugln("received 0 transaction. Skipping")
+			continue
 		}
 		raw, dErr := t.Dump()
 		if dErr != nil {
@@ -77,26 +86,53 @@ func HandlePgArrowRabbit(config Config) (err error) {
 	defer pgConn.MustClose()
 	queue := config.RabbitMqConfig.NewQueue("stream")
 	defer queue.MustClose()
-	if err = pgConn.StartRepl(); err != nil {
-		return err
-	}
-	if err = queue.CreateQueue(); err != nil {
-		return err
-	}
 	for {
+		if err = pgConn.StartRepl(); err != nil {
+			return err
+		}
 		t, pgErr := pgConn.NextTransactions()
 		if pgErr != nil {
-			return pgErr
+			if err = pgConn.Close(); err != nil {
+				return err
+			}
+			log.Debug(pgErr)
+			//return pgErr
 		}
-		raw, pgErr := t.Dump()
-		if pgErr != nil {
-			return pgErr
+		if t.LSN == 0 {
+			log.Debugln("received 0 transaction. Skipping")
+			continue
+		}
+		raw, tErr := t.Dump()
+		if tErr != nil {
+			return tErr
 		}
 		if config.Debug {
 			log.Debugf("Transaction (%d bytes): %s", len(raw), string(raw))
 		}
-		if err = queue.Publish(raw); err != nil {
-			return err
+		rErr := func() error {
+			for {
+				if err = queue.CreateQueue(); err != nil {
+					log.Errorf("Unknown error: %v", err)
+					return err
+				}
+				log.Debug("Queue created")
+				if err = queue.Publish(raw); err != nil {
+					log.Errorf("Error while publishing data")
+					log.Infof("Retrying in 10 seconds")
+					time.Sleep(10 * time.Second)
+					if err = queue.Close(); err != nil {
+						log.Errorf("Closing channel")
+						return err
+					}
+					queue = config.RabbitMqConfig.NewQueue("stream")
+				} else {
+					log.Debug("Data published")
+					return nil
+				}
+			}
+		}()
+		if rErr != nil {
+			return rErr
 		}
 	}
 }
@@ -108,5 +144,13 @@ func HandleRabbitArrowPg(config Config) (err error) {
 	log.Debug("Connecting to RabbitMQ")
 	queue := config.RabbitMqConfig.NewQueue("stream")
 	defer queue.MustClose()
-	return queue.Process(pgConn.ProcessMsg)
+	for {
+		if err = queue.Process(pgConn.ProcessMsg); err != nil {
+			return err
+		}
+		if err = queue.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

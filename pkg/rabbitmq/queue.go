@@ -1,7 +1,10 @@
 package rabbitmq
 
 import (
+	"fmt"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"net"
+	"time"
 )
 
 type Queues map[string]*Queue
@@ -15,18 +18,31 @@ type Queue struct {
 }
 
 func (q *Queue) Connect() (err error) {
+	if q.channel != nil {
+		return fmt.Errorf("RabbitMQ channel already initialized")
+	}
 	if q.conn != nil {
 		log.Info("RabbitMQ connection already initialized")
-	} else if q.conn, err = amqp.Dial(q.config.Url); err != nil {
-		return err
+	} else {
+		for {
+			q.conn, err = amqp.Dial(q.config.Url)
+			switch err.(type) {
+			case nil:
+				log.Debug("RabbitMQ connected")
+			case *net.OpError:
+				log.Errorf("RabbitMQ not available: %v", err)
+				log.Infof("Retrying in 10 seconds")
+				time.Sleep(10 * time.Second)
+				continue
+			default:
+				log.Errorf("Unknown error: %v", err)
+				return err
+			}
+			break
+		}
 	}
-	if q.channel != nil {
-		log.Info("RabbitMQ channel already initialized")
-	} else if q.channel, err = q.conn.Channel(); err != nil {
-		return err
-	}
-
-	return nil
+	q.channel, err = q.conn.Channel()
+	return err
 }
 
 func (q *Queue) MustClose() {
@@ -42,9 +58,8 @@ func (q *Queue) Close() (err error) {
 		log.Debugf("channel was already closed")
 	} else if err = q.channel.Close(); err != nil {
 		return err
-	} else {
-		q.channel = nil
 	}
+	q.channel = nil
 
 	if q.conn == nil {
 		log.Debugf("connection not defined")
@@ -54,6 +69,7 @@ func (q *Queue) Close() (err error) {
 		return err
 	}
 	q.conn = nil
+	q.queue = amqp.Queue{}
 	return nil
 }
 
@@ -80,7 +96,7 @@ func (q Queue) Publish(data []byte) (err error) {
 	qCtx, qCtxCancel := q.config.Context()
 	defer qCtxCancel()
 
-	return q.channel.PublishWithContext(qCtx,
+	err = q.channel.PublishWithContext(qCtx,
 		"",     // exchange
 		q.name, // routing key
 		false,  // mandatory
@@ -89,6 +105,15 @@ func (q Queue) Publish(data []byte) (err error) {
 			ContentType: "application/json",
 			Body:        data,
 		})
+	switch err.(type) {
+	case *amqp.Error:
+		log.Debugf("amqp error: %T: %v", err, err)
+	case nil:
+		return nil
+	default:
+		log.Debugf("Unknown error: %T: %v", err, err)
+	}
+	return err
 }
 
 func (q Queue) Process(PostProcessor func([]byte) error) (err error) {
