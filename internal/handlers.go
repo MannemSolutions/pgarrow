@@ -40,13 +40,21 @@ func HandlePgArrowKafka(config Config) (err error) {
 	defer pgConn.MustClose()
 	topic := config.KafkaConfig.NewTopic("stream")
 	defer topic.MustClose()
-	if err = pgConn.StartRepl(); err != nil {
-		return err
-	}
 	for {
+		if err = pgConn.StartRepl(); err != nil {
+			return err
+		}
 		t, pgErr := pgConn.NextTransactions()
 		if pgErr != nil {
-			return pgErr
+			if err = pgConn.Close(); err != nil {
+				return err
+			}
+			log.Debug(pgErr)
+			//return pgErr
+		}
+		if t.LSN == 0 {
+			log.Debugln("received 0 transaction. Skipping")
+			continue
 		}
 		raw, dErr := t.Dump()
 		if dErr != nil {
