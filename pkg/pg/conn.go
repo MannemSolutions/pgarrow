@@ -51,7 +51,7 @@ func (c *Conn) Connect() (err error) {
 		log.Infof("Retrying in 10 seconds")
 		time.Sleep(10 * time.Second)
 	}
-
+	log.Debugln("successfully connected to postgres")
 	return nil
 }
 
@@ -89,6 +89,7 @@ func (c *Conn) Close() (err error) {
 		return err
 	}
 	c.qConn = nil
+	log.Debugln("connection successfully closed")
 	return nil
 }
 
@@ -111,7 +112,26 @@ func (c *Conn) RunSQL(sql string) (err error) {
 	}
 	log.Debugf("Running SQL: %s", sql)
 	cur := c.rConn.Exec(ctx, sql)
-	return cur.Close()
+	if err = cur.Close(); err == nil {
+		return nil
+	} else if pgErr, ok := err.(*pgconn.PgError); !ok {
+		log.Error("Unexpected error while running query: (%T)->%v", err, err)
+		return err
+	} else if pgErr.Code != "57P01" {
+		log.Error("unexpected Postgres error while running query: (%T)->%v", pgErr, pgErr)
+		return pgErr
+	} else if closeErr := c.Close(); closeErr != nil {
+		log.Error("tried to resolve SQLSTATE 57P01 while running query, "+
+			"but closing connection failed: (%T)->%v", closeErr, closeErr)
+		return closeErr
+	}
+	log.Info("recovering from SQLSTATE 57P01, rerunning query")
+	if runErr := c.RunSQL(sql); runErr != nil {
+		log.Error("tried to resolve SQLSTATE 57P01 while running query, "+
+			"but rerunning the query failed: (%T)->%v", runErr, runErr)
+		return runErr
+	}
+	return nil
 }
 
 func (c *Conn) GetRows(query string) (answer []map[string]string, err error) {
