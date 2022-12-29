@@ -105,7 +105,7 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 				log.Fatal("ParsePrimaryKeepaliveMessage failed:", err)
 			}
 			// This makes sure that the debug log is not flooded when Postgres stops
-			if time.Now().Sub(c.lastPrimaryKeepaliveMessage) > time.Second {
+			if time.Since(c.lastPrimaryKeepaliveMessage) > time.Second {
 				log.Debugln("Primary Keepalive Message =>",
 					"ServerWALEnd:", pkm.ServerWALEnd,
 					"ServerTime:", pkm.ServerTime,
