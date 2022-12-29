@@ -13,17 +13,19 @@ import (
 type RelationMessages map[uint32]*pglogrepl.RelationMessage
 
 type Conn struct {
-	config           *Config
-	rConn            *pgconn.PgConn
-	qConn            *pgconn.PgConn
-	relationMessages RelationMessages
-	XLogPos          pglogrepl.LSN
+	config                      *Config
+	rConn                       *pgconn.PgConn
+	qConn                       *pgconn.PgConn
+	relationMessages            RelationMessages
+	XLogPos                     pglogrepl.LSN
+	lastPrimaryKeepaliveMessage time.Time
 }
 
 func NewConn(conf *Config) (c *Conn) {
 	return &Conn{
-		config:           conf,
-		relationMessages: make(RelationMessages),
+		config:                      conf,
+		relationMessages:            make(RelationMessages),
+		lastPrimaryKeepaliveMessage: time.Now(),
 	}
 }
 
