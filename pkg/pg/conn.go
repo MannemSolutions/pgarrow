@@ -3,6 +3,7 @@ package pg
 import (
 	"fmt"
 	"github.com/jackc/pgx/v5/pgtype"
+	"go.uber.org/zap"
 	"strconv"
 	"strings"
 	"time"
@@ -238,8 +239,11 @@ func (c *Conn) GetTableFromOID(oid uint32) (t Table, err error) {
 }
 
 func (c *Conn) ProcessMsg(msg []byte) (err error) {
-	log.Debug("Processing messages")
-	log.Debugf("Processing msg (%d bytes)", len(msg))
+	if ce := quickLog.Check(zap.DebugLevel, "Processing messages"); ce != nil {
+		ce.Write(
+			zap.Int("length", len(msg)),
+		)
+	}
 	var t Transaction
 	if t, err = TransactionFromBytes(msg); err != nil {
 		return err
@@ -254,9 +258,13 @@ func (c *Conn) ProcessMsg(msg []byte) (err error) {
 		return nil
 	} else {
 		log.Error(pgErr)
-		log.Debug("to skip, add this to pg_config.skip_errors:")
-		log.Debugf(" -> \"%s\": \"%s\"",
-			pgErr.Code, strings.Replace(pgErr.Message, "\"", "'", -1))
+		if ce := quickLog.Check(zap.DebugLevel, "to skip, add this to config"); ce != nil {
+			ce.Write(
+				zap.String("key", fmt.Sprintf("pg_config.skip_errors.%s", pgErr.Code)),
+				zap.String("value", strings.Replace(pgErr.Message, "\"", "'", -1)),
+			)
+		}
+
 		return pgErr
 	}
 	return nil
