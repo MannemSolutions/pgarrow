@@ -15,14 +15,17 @@ var (
 	}
 )
 
-// The Transaction struct is used as a format for storing
 type Transactions []Transaction
+
+// Transaction is a wrapper for all info related to a DML
+// pgarrow... creates a Transaction, converts it to JSON and publishes it
+// ...arrowpg reads it, converts from JSON to Transaction and applies it on the dest database
 type Transaction struct {
 	LSN    uint64
 	Type   string
 	Tables Tables
-	Values ColumnValues
-	Where  ColumnValues
+	Values Columns
+	Where  Columns
 }
 
 func (t Transaction) Dump() ([]byte, error) {
