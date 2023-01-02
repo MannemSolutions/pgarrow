@@ -2,6 +2,7 @@ package pg
 
 import (
 	"fmt"
+	"github.com/jackc/pgx/v5/pgtype"
 	"strconv"
 	"strings"
 	"time"
@@ -50,6 +51,9 @@ func (c *Conn) Connect() (err error) {
 		log.Errorln("Cannot connect to Postgres:", err.Error())
 		log.Infof("Retrying in 10 seconds")
 		time.Sleep(10 * time.Second)
+	}
+	if typeMap == nil {
+		typeMap = pgtype.NewMap()
 	}
 	log.Debugln("successfully connected to postgres")
 	return nil

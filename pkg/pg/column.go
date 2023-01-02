@@ -23,7 +23,8 @@ type Data struct {
 type MetaData struct {
 	Flags    uint8
 	Name     string
-	Type     uint32
+	TypeOID  uint32
+	TypeName string
 	Modifier int32
 }
 
@@ -36,12 +37,12 @@ func (d Data) Changed() bool {
 
 func (c Column) Sql() string {
 	switch c.Data.Type {
-	case 'n': // nul
+	case 'n': // null
 		return "NULL"
 	case 'u': // unchanged toast
-		return "UNCHANGED"
+		log.Panicf("trying to get SQL from unchanged TOAST value, this should never happen!!!")
 	case 't': // text
-		val, err := decodeTextColumnData(c.Data.Data, c.Meta.Type)
+		val, err := decodeTextColumnData(c.Data.Data, c.Meta.TypeOID)
 		if err != nil {
 			log.Fatal("error decoding column data:", err)
 		}
@@ -53,7 +54,12 @@ func (c Column) Sql() string {
 		case string:
 			return stringValueSql(v)
 		default:
-			log.Fatalf("pgarrow does not work (yet) with values like %v.(%T)", val, val)
+			switch c.Meta.TypeName {
+			case "json":
+				return stringValueSql(string(c.Data.Data)) + "::json"
+			default:
+				log.Fatalf("pgarrow does not work (yet) with values like %v.(%T)", val, val)
+			}
 		}
 	default:
 		log.Fatalf("column data has unexpected datatype %c (instead of 'n', 'u', or 't')", c.Data.Type)
@@ -67,6 +73,10 @@ func ColValsFromLogMsg(cols []*pglogrepl.TupleDataColumn, relInfo *pglogrepl.Rel
 	for idx, col := range cols {
 		meta := relInfo.Columns[idx]
 		name := meta.Name
+		typeName, ok := typeMap.TypeForOID(meta.DataType)
+		if !ok {
+			log.Fatalf("trying to get Type Name for unknown value type (oid %d)", meta.DataType)
+		}
 		cvs[name] = Column{
 			Data: Data{
 				Type:   col.DataType,
@@ -76,7 +86,8 @@ func ColValsFromLogMsg(cols []*pglogrepl.TupleDataColumn, relInfo *pglogrepl.Rel
 			Meta: MetaData{
 				Flags:    meta.Flags,
 				Name:     meta.Name,
-				Type:     meta.DataType,
+				TypeOID:  meta.DataType,
+				TypeName: typeName.Name,
 				Modifier: meta.TypeModifier,
 			},
 		}
