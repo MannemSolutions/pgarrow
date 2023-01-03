@@ -1,8 +1,11 @@
 package pg
 
 import (
+	"database/sql/driver"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgtype"
 	"strings"
+	"time"
 
 	"github.com/jackc/pglogrepl"
 )
@@ -35,6 +38,16 @@ func (d Data) Changed() bool {
 	return true
 }
 
+func tryValuerToString(v driver.Valuer) (string, error) {
+	if nVal, err := v.Value(); err != nil {
+		return "", fmt.Errorf("error converting %v to driver.Value: %e", v, err)
+	} else if sVal, ok := nVal.(string); !ok {
+		return "", fmt.Errorf("expected driver.Value %e (%T) to be string", v, v)
+	} else {
+		return stringValueSql(sVal), nil
+	}
+}
+
 func (c Column) Sql() string {
 	switch c.Data.Type {
 	case 'n': // null
@@ -49,17 +62,41 @@ func (c Column) Sql() string {
 		switch v := val.(type) {
 		case nil:
 			return "NULL"
-		case int, int32:
+		case bool:
+			return fmt.Sprintf("%v", v)
+		case time.Time:
+			return fmt.Sprintf("'%s'::%s", v.Format("2006-01-02T15:04:05.000Z"), c.Meta.TypeName)
+		case pgtype.Interval:
+			return fmt.Sprintf("'%s'::%s",
+				fmt.Sprintf("%d days %d months %d microseconds", v.Days, v.Months, v.Microseconds),
+				c.Meta.TypeName)
+		case int, int8, int16, int32, int64:
 			return fmt.Sprintf("%d", v)
+		case uint, uint8, uint16, uint32, uint64:
+			return fmt.Sprintf("%d", v)
+		case float32, float64:
+			return fmt.Sprintf("%f", v)
 		case string:
 			return stringValueSql(v)
-		default:
-			switch c.Meta.TypeName {
-			case "json":
-				return stringValueSql(string(c.Data.Data)) + "::json"
-			default:
-				log.Fatalf("pgarrow does not work (yet) with values like %v.(%T)", val, val)
+		case driver.Valuer:
+			if sVal, err := tryValuerToString(v); err == nil {
+				return fmt.Sprintf("%s::%s", sVal, c.Meta.TypeName)
+			} else if stringer, ok := v.(fmt.Stringer); ok {
+				return fmt.Sprintf("%s::%s", stringValueSql(stringer.String()), c.Meta.TypeName)
 			}
+		case fmt.Stringer:
+			return fmt.Sprintf("%s::%s", stringValueSql(v.String()), c.Meta.TypeName)
+		case []byte:
+			return fmt.Sprintf("%s::%s", stringValueSql(string(c.Data.Data)), c.Meta.TypeName)
+		case map[string]interface{}:
+			switch c.Meta.TypeName {
+			case "json", "jsonb", "xml":
+				return fmt.Sprintf("%s::%s", stringValueSql(string(c.Data.Data)), c.Meta.TypeName)
+			default:
+				log.Fatalf("pgarrow does not work (yet) with (pg=>%s,go=>%T) values", c.Meta.TypeName, v)
+			}
+		default:
+			log.Fatalf("pgarrow does not work (yet) with (pg=>%s,go=>%T) values", c.Meta.TypeName, v)
 		}
 	default:
 		log.Fatalf("column data has unexpected datatype %c (instead of 'n', 'u', or 't')", c.Data.Type)

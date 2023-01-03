@@ -17,7 +17,7 @@ func identifierNameSql(objectName string) (escaped string) {
 	return fmt.Sprintf("\"%s\"", strings.Replace(objectName, "\"", "\"\"", -1))
 }
 
-// stringValueSql uses proper quoting for values in SQL queries
+// stringValueSql uses proper SQL quoting for string values
 func stringValueSql(stringValue string) (escaped string) {
 	return fmt.Sprintf("'%s'", strings.Replace(stringValue, "'", "''", -1))
 }
