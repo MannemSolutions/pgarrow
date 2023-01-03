@@ -55,48 +55,51 @@ func (c Column) Sql() string {
 	case 'u': // unchanged toast
 		log.Panicf("trying to get SQL from unchanged TOAST value, this should never happen!!!")
 	case 't': // text
-		val, err := decodeTextColumnData(c.Data.Data, c.Meta.TypeOID)
-		if err != nil {
-			log.Fatal("error decoding column data:", err)
-		}
-		switch v := val.(type) {
-		case nil:
-			return "NULL"
-		case bool:
-			return fmt.Sprintf("%v", v)
-		case time.Time:
-			return fmt.Sprintf("'%s'::%s", v.Format("2006-01-02T15:04:05.000Z"), c.Meta.TypeName)
-		case pgtype.Interval:
-			return fmt.Sprintf("'%s'::%s",
-				fmt.Sprintf("%d days %d months %d microseconds", v.Days, v.Months, v.Microseconds),
-				c.Meta.TypeName)
-		case int, int8, int16, int32, int64:
-			return fmt.Sprintf("%d", v)
-		case uint, uint8, uint16, uint32, uint64:
-			return fmt.Sprintf("%d", v)
-		case float32, float64:
-			return fmt.Sprintf("%f", v)
-		case string:
-			return stringValueSql(v)
-		case driver.Valuer:
-			if sVal, err := tryValuerToString(v); err == nil {
-				return fmt.Sprintf("%s::%s", sVal, c.Meta.TypeName)
-			} else if stringer, ok := v.(fmt.Stringer); ok {
-				return fmt.Sprintf("%s::%s", stringValueSql(stringer.String()), c.Meta.TypeName)
-			}
-		case fmt.Stringer:
-			return fmt.Sprintf("%s::%s", stringValueSql(v.String()), c.Meta.TypeName)
-		case []byte:
+		switch c.Meta.TypeName {
+		case "json", "jsonb", "xml":
 			return fmt.Sprintf("%s::%s", stringValueSql(string(c.Data.Data)), c.Meta.TypeName)
-		case map[string]interface{}:
-			switch c.Meta.TypeName {
-			case "json", "jsonb", "xml":
+		default:
+			//xml is a special case which is not implemented in decodeTextColumnData
+			//we can manage it separately
+			if c.Meta.TypeName == "xml" {
+				return fmt.Sprintf("%s::%s", stringValueSql(string(c.Data.Data)), c.Meta.TypeName)
+			}
+			val, err := decodeTextColumnData(c.Data.Data, c.Meta.TypeOID)
+			if err != nil {
+				log.Fatal("error decoding column data:", err)
+			}
+			switch v := val.(type) {
+			case nil:
+				return "NULL"
+			case bool:
+				return fmt.Sprintf("%v", v)
+			case time.Time:
+				return fmt.Sprintf("'%s'::%s", v.Format("2006-01-02T15:04:05.000Z"), c.Meta.TypeName)
+			case pgtype.Interval:
+				return fmt.Sprintf("'%s'::%s",
+					fmt.Sprintf("%d days %d months %d microseconds", v.Days, v.Months, v.Microseconds),
+					c.Meta.TypeName)
+			case int, int8, int16, int32, int64:
+				return fmt.Sprintf("%d", v)
+			case uint, uint8, uint16, uint32, uint64:
+				return fmt.Sprintf("%d", v)
+			case float32, float64:
+				return fmt.Sprintf("%f", v)
+			case string:
+				return stringValueSql(v)
+			case driver.Valuer:
+				if sVal, err := tryValuerToString(v); err == nil {
+					return fmt.Sprintf("%s::%s", sVal, c.Meta.TypeName)
+				} else if stringer, ok := v.(fmt.Stringer); ok {
+					return fmt.Sprintf("%s::%s", stringValueSql(stringer.String()), c.Meta.TypeName)
+				}
+			case fmt.Stringer:
+				return fmt.Sprintf("%s::%s", stringValueSql(v.String()), c.Meta.TypeName)
+			case []byte:
 				return fmt.Sprintf("%s::%s", stringValueSql(string(c.Data.Data)), c.Meta.TypeName)
 			default:
 				log.Fatalf("pgarrow does not work (yet) with (pg=>%s,go=>%T) values", c.Meta.TypeName, v)
 			}
-		default:
-			log.Fatalf("pgarrow does not work (yet) with (pg=>%s,go=>%T) values", c.Meta.TypeName, v)
 		}
 	default:
 		log.Fatalf("column data has unexpected datatype %c (instead of 'n', 'u', or 't')", c.Data.Type)
@@ -110,23 +113,23 @@ func ColValsFromLogMsg(cols []*pglogrepl.TupleDataColumn, relInfo *pglogrepl.Rel
 	for idx, col := range cols {
 		meta := relInfo.Columns[idx]
 		name := meta.Name
-		typeName, ok := typeMap.TypeForOID(meta.DataType)
-		if !ok {
+		if typeName, ok := oidToPgType[meta.DataType]; !ok {
 			log.Fatalf("trying to get Type Name for unknown value type (oid %d)", meta.DataType)
-		}
-		cvs[name] = Column{
-			Data: Data{
-				Type:   col.DataType,
-				Length: col.Length,
-				Data:   col.Data,
-			},
-			Meta: MetaData{
-				Flags:    meta.Flags,
-				Name:     meta.Name,
-				TypeOID:  meta.DataType,
-				TypeName: typeName.Name,
-				Modifier: meta.TypeModifier,
-			},
+		} else {
+			cvs[name] = Column{
+				Data: Data{
+					Type:   col.DataType,
+					Length: col.Length,
+					Data:   col.Data,
+				},
+				Meta: MetaData{
+					Flags:    meta.Flags,
+					Name:     meta.Name,
+					TypeOID:  meta.DataType,
+					TypeName: typeName,
+					Modifier: meta.TypeModifier,
+				},
+			}
 		}
 	}
 	return cvs

@@ -14,3 +14,4 @@ insert into t8 values('1 year 221 milliseconds'::interval);
 insert into t9 values(0.001);
 insert into t10 values('''');
 insert into t11 values('{ 1, 2, 3 }');
+insert into t12 values('<list><item1/></list>'::xml);

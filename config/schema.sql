@@ -14,6 +14,7 @@ create table t8 (i interval);
 create table t9 (n numeric);
 create table t10 (b bytea);
 create table t11 (l line);
+create table t12 (x xml);
 
 create database dest;
 \c dest
@@ -28,3 +29,4 @@ create table t8 (i interval);
 create table t9 (n numeric);
 create table t10 (b bytea);
 create table t11 (l line);
+create table t12 (x xml);

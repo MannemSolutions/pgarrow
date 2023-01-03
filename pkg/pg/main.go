@@ -8,10 +8,11 @@ import (
 )
 
 var (
-	log      *zap.SugaredLogger
-	quickLog *zap.Logger
-	ctx      context.Context
-	typeMap  *pgtype.Map
+	log         *zap.SugaredLogger
+	quickLog    *zap.Logger
+	ctx         context.Context
+	typeMap     *pgtype.Map
+	oidToPgType map[uint32]string
 )
 
 func InitLogger(logger *zap.SugaredLogger) {
