@@ -90,9 +90,11 @@ func (t *Topic) MultiPublish(multiData [][]byte) (err error) {
 	if len(multiData) == 0 {
 		return nil
 	}
+	numBytes := 0
 	var msgs []kafka.Message
 	for _, d := range multiData {
 		msgs = append(msgs, kafka.Message{Value: d})
+		numBytes += len(d)
 	}
 	for {
 		// Use closure to defer tCtxCancel properly in a loop without leaking
@@ -112,7 +114,7 @@ func (t *Topic) MultiPublish(multiData [][]byte) (err error) {
 			log.Infof("Retrying in 10 seconds")
 			time.Sleep(10 * time.Second)
 		case nil:
-			log.Debugf("Data written to Kafka: %v", t.writer.Stats())
+			log.Debugf("%d bytes written to Kafka", numBytes)
 			return nil
 		default:
 			log.Errorf("failed to write messages: (%T): %s", err, err)

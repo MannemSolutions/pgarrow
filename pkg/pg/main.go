@@ -8,13 +8,16 @@ import (
 )
 
 var (
-	log     *zap.SugaredLogger
-	ctx     context.Context
-	typeMap *pgtype.Map
+	log         *zap.SugaredLogger
+	quickLog    *zap.Logger
+	ctx         context.Context
+	typeMap     *pgtype.Map
+	oidToPgType map[uint32]string
 )
 
 func InitLogger(logger *zap.SugaredLogger) {
 	log = logger
+	quickLog = logger.Desugar()
 }
 func InitContext(c context.Context) {
 	ctx = c

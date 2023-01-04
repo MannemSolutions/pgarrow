@@ -2,6 +2,7 @@ package pg
 
 import (
 	"fmt"
+	"go.uber.org/zap"
 	"strconv"
 	"strings"
 	"time"
@@ -50,6 +51,9 @@ func (c *Conn) Connect() (err error) {
 		log.Errorln("Cannot connect to Postgres:", err.Error())
 		log.Infof("Retrying in 10 seconds")
 		time.Sleep(10 * time.Second)
+	}
+	if err = c.getPgTypes(); err != nil {
+		return err
 	}
 	log.Debugln("successfully connected to postgres")
 	return nil
@@ -190,6 +194,26 @@ func (c *Conn) getSlotInfo() (slotInfos, error) {
 	}
 }
 
+func (c *Conn) getPgTypes() error {
+	if answer, queryErr := c.GetRows("select oid, typname from pg_type"); queryErr != nil {
+		return queryErr
+	} else {
+		oidToPgType = make(map[uint32]string)
+		for _, row := range answer {
+			if sOid, ok := row["oid"]; !ok {
+				return fmt.Errorf("unexpected result, expected oid column")
+			} else if oid, convErr := strconv.ParseInt(sOid, 10, 32); convErr != nil {
+				log.Errorf("Error while converting string %s to int: %e", row["oid"], convErr)
+			} else if name, ok := row["typname"]; !ok {
+				return fmt.Errorf("unexpected result, expected oid column")
+			} else {
+				oidToPgType[uint32(oid)] = name
+			}
+		}
+	}
+	return nil
+}
+
 func (c *Conn) GetXLogPos() (pglogrepl.LSN, error) {
 	if slots, err := c.getSlotInfo(); err != nil {
 		return 0, err
@@ -234,8 +258,11 @@ func (c *Conn) GetTableFromOID(oid uint32) (t Table, err error) {
 }
 
 func (c *Conn) ProcessMsg(msg []byte) (err error) {
-	log.Debug("Processing messages")
-	log.Debugf("Processing msg (%d bytes)", len(msg))
+	if ce := quickLog.Check(zap.DebugLevel, "Processing messages"); ce != nil {
+		ce.Write(
+			zap.Int("length", len(msg)),
+		)
+	}
 	var t Transaction
 	if t, err = TransactionFromBytes(msg); err != nil {
 		return err
@@ -250,9 +277,13 @@ func (c *Conn) ProcessMsg(msg []byte) (err error) {
 		return nil
 	} else {
 		log.Error(pgErr)
-		log.Debug("to skip, add this to pg_config.skip_errors:")
-		log.Debugf(" -> \"%s\": \"%s\"",
-			pgErr.Code, strings.Replace(pgErr.Message, "\"", "'", -1))
+		if ce := quickLog.Check(zap.DebugLevel, "to skip, add this to config"); ce != nil {
+			ce.Write(
+				zap.String("key", fmt.Sprintf("pg_config.skip_errors.%s", pgErr.Code)),
+				zap.String("value", strings.Replace(pgErr.Message, "\"", "'", -1)),
+			)
+		}
+
 		return pgErr
 	}
 	return nil

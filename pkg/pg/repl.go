@@ -8,6 +8,7 @@ package pg
 import (
 	"context"
 	"fmt"
+	"go.uber.org/zap"
 	"time"
 
 	"github.com/jackc/pglogrepl"
@@ -88,14 +89,15 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 		}
 
 		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-			log.Debug("received Postgres WAL error: ", errMsg)
+			log.Error("received Postgres WAL error: ", errMsg)
 			return t, err
 		}
 
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
-			log.Infof("Received unexpected message: %T, %v\n", rawMsg, msg)
-			continue
+			err = fmt.Errorf("Received unexpected message: %T, %v", rawMsg, msg)
+			log.Error(err)
+			return t, err
 		}
 
 		switch msg.Data[0] {
@@ -105,12 +107,14 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 				log.Fatal("ParsePrimaryKeepaliveMessage failed:", err)
 			}
 			// This makes sure that the debug log is not flooded when Postgres stops
-			if time.Since(c.lastPrimaryKeepaliveMessage) > time.Second {
-				log.Debugln("Primary Keepalive Message =>",
-					"ServerWALEnd:", pkm.ServerWALEnd,
-					"ServerTime:", pkm.ServerTime,
-					"ReplyRequested:", pkm.ReplyRequested)
-				c.lastPrimaryKeepaliveMessage = time.Now()
+			if ce := quickLog.Check(zap.DebugLevel, "Primary Keepalive Message"); ce != nil {
+				if time.Since(c.lastPrimaryKeepaliveMessage) > time.Second {
+					// If debug-level log output isn't enabled or if zap's sampling would have
+					// dropped this log entry, we don't allocate the slice that holds these
+					// fields.
+					ce.Write(zap.Any("data", pkm))
+					c.lastPrimaryKeepaliveMessage = time.Now()
+				}
 			}
 
 			if pkm.ReplyRequested {
@@ -122,32 +126,35 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 			if err != nil {
 				log.Fatal("ParseXLogData failed:", err)
 			}
-			log.Debug("XLogData =>", "WALStart",
-				xld.WALStart,
-				"ServerWALEnd",
-				xld.ServerWALEnd,
-				"ServerTime:", xld.ServerTime,
-				"WALData", string(xld.WALData))
+			if ce := quickLog.Check(zap.DebugLevel, "XLogData"); ce != nil {
+				ce.Write(
+					zap.Uint64("WALStart", uint64(xld.WALStart)),
+					zap.Uint64("ServerWALEnd", uint64(xld.ServerWALEnd)),
+					zap.Time("ServerTime", xld.ServerTime),
+					zap.Any("WALData", xld.WALData),
+				)
+			}
 			parsedMsg, err = pglogrepl.Parse(xld.WALData)
 			if err != nil {
 				log.Fatalf("Parse logical replication message: %s", err)
 			}
-			log.Debugf("Receive a logical replication message: %s", parsedMsg.Type())
+
+			if ce := quickLog.Check(zap.DebugLevel, "XLogMsg"); ce != nil {
+				ce.Write(zap.Any("type", parsedMsg.Type()))
+			}
 
 			switch logicalMsg := parsedMsg.(type) {
 			case *pglogrepl.RelationMessage:
-				log.Debug("RELATION MESSAGE")
-
 				c.relationMessages[logicalMsg.RelationID] = logicalMsg
+
 			case *pglogrepl.BeginMessage:
-				// Indicates the beginning of a group of changes in a transaction. This is only sent for committed transactions. You won't get any events from rolled back transactions.
-				log.Debug("BEGIN MESSAGE")
+				// Indicates the beginning of a group of changes in a transaction.
+				// This is only sent for committed transactions.
+				// You won't get any events from rolled back transactions.
 
 			case *pglogrepl.CommitMessage:
-				log.Debug("COMMIT MESSAGE")
 
 			case *pglogrepl.InsertMessage:
-				log.Debug("INSERT MESSAGE")
 				relationInfo, ok = c.relationMessages[logicalMsg.RelationID]
 				if !ok {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
@@ -165,18 +172,21 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 					}},
 					Values: newValues,
 				}
-				log.Debug(t.Sql())
+				if ce := quickLog.Check(zap.DebugLevel, "transaction"); ce != nil {
+					ce.Write(
+						zap.Any("body", t),
+						zap.Any("sql", t.Sql()),
+					)
+				}
 				return t, err
 
 			case *pglogrepl.UpdateMessage:
-				log.Debug("UPDATE MESSAGE")
-
 				relationInfo, ok = c.relationMessages[logicalMsg.RelationID]
 				if !ok {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 				}
 
-				log.Debug("RELTYPE   %v\n", relationInfo)
+				log.Debugf("RELTYPE   %v", relationInfo)
 
 				newValues := ColValsFromLogMsg(logicalMsg.NewTuple.Columns, relationInfo)
 				//				log.Printf("DEBUG UPDATE %s.%s: %v", rel.Namespace, rel.RelationName, new_values)
@@ -193,10 +203,14 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 					Values: newValues,
 					Where:  whereVals,
 				}
+				if ce := quickLog.Check(zap.DebugLevel, "transaction"); ce != nil {
+					ce.Write(
+						zap.Any("body", t),
+						zap.Any("sql", t.Sql()),
+					)
+				}
 				return t, err
 			case *pglogrepl.DeleteMessage:
-				log.Debug("DELETE MESSAGE")
-
 				relationInfo, ok = c.relationMessages[logicalMsg.RelationID]
 				if !ok {
 					log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
@@ -213,10 +227,15 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 					}},
 					Where: whereVals,
 				}
+				if ce := quickLog.Check(zap.DebugLevel, "transaction"); ce != nil {
+					ce.Write(
+						zap.Any("body", t),
+						zap.Any("sql", t.Sql()),
+					)
+				}
 				return t, err
 
 			case *pglogrepl.TruncateMessage:
-				log.Debug("TRUNCATE MESSSAGE")
 				log.Debug(logicalMsg)
 				var tables Tables
 				var table Table
@@ -231,12 +250,16 @@ func (c *Conn) NextTransactions() (t Transaction, err error) {
 					Type:   "TRUNCATE",
 					Tables: tables,
 				}
+				if ce := quickLog.Check(zap.DebugLevel, "transaction"); ce != nil {
+					ce.Write(
+						zap.Any("body", t),
+						zap.Any("sql", t.Sql()),
+					)
+				}
 				return t, err
 
 			case *pglogrepl.TypeMessage:
-				fmt.Println("TYPE MESSSAGE")
 			case *pglogrepl.OriginMessage:
-				fmt.Println("ORIGINAL MESSSAGE")
 			default:
 				log.Infof("Unknown message type in pgoutput stream: %T", logicalMsg)
 			}
