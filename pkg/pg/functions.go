@@ -2,15 +2,12 @@ package pg
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-var (
-	reSimpleSQLValue *regexp.Regexp
-)
+//var	reSimpleSQLValue *regexp.Regexp
 
 // identifierNameSql returns the object name ready to be used in a sql query as an object name (e.a. Select * from %s)
 func identifierNameSql(objectName string) (escaped string) {
@@ -23,19 +20,19 @@ func stringValueSql(stringValue string) (escaped string) {
 }
 
 // repackValueSql unpacks and repacks, just to be sure we don't introduce SQL injection
-func repackValueSql(sqlValue string) (repacked string) {
-	if reSimpleSQLValue == nil {
-		reSimpleSQLValue = regexp.MustCompile(`^(NULL|[\d.]+)$`)
-	}
-	if reSimpleSQLValue.Match([]byte(sqlValue)) {
-		return sqlValue
-	}
-	if !(strings.HasPrefix(sqlValue, "'") && strings.HasSuffix(sqlValue, "'")) {
-		log.Fatalf("This does not seem like a valid SQL value: %s", sqlValue)
-	}
-	// Unpacking and repacking string just to be sure!!!
-	return stringValueSql(strings.Replace(sqlValue[1:len(sqlValue)-1], "''", "'", -1))
-}
+//func repackValueSql(sqlValue string) (repacked string) {
+//	if reSimpleSQLValue == nil {
+//		reSimpleSQLValue = regexp.MustCompile(`^(NULL|[\d.]+)$`)
+//	}
+//	if reSimpleSQLValue.Match([]byte(sqlValue)) {
+//		return sqlValue
+//	}
+//	if !(strings.HasPrefix(sqlValue, "'") && strings.HasSuffix(sqlValue, "'")) {
+//		log.Fatalf("This does not seem like a valid SQL value: %s", sqlValue)
+//	}
+//	// Unpacking and repacking string just to be sure!!!
+//	return stringValueSql(strings.Replace(sqlValue[1:len(sqlValue)-1], "''", "'", -1))
+//}
 
 //func decodeTextColumnData(data []byte, dataType uint32) (interface{}, error) {
 //	var decoder pgtype.TextDecoder

@@ -32,10 +32,7 @@ type MetaData struct {
 }
 
 func (d Data) Changed() bool {
-	if d.Type == 'u' {
-		return false
-	}
-	return true
+	return d.Type != 'u'
 }
 
 func tryValuerToString(v driver.Valuer) (string, error) {
