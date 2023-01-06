@@ -83,7 +83,7 @@ func (c Column) Sql() string {
 			case float32, float64:
 				return fmt.Sprintf("%f", v)
 			case string:
-				return stringValueSql(v)
+				return fmt.Sprintf("%s::%s", stringValueSql(v), c.Meta.TypeName)
 			case driver.Valuer:
 				if sVal, err := tryValuerToString(v); err == nil {
 					return fmt.Sprintf("%s::%s", sVal, c.Meta.TypeName)
