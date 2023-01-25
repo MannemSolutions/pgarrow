@@ -71,6 +71,14 @@ func (t Transaction) Sql() string {
 			t.Tables[0].RelationName(),
 			strings.Join(names, ","),
 			strings.Join(values, ","))
+	case "UPSERT":
+		names, values := t.Values.ColNamesValues()
+		where, _ := t.Where.ColNamesValues()
+		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) DO NOTHING",
+			t.Tables[0].RelationName(),
+			strings.Join(names, ","),
+			strings.Join(where, ","),
+			strings.Join(values, ","))
 	case "TRUNCATE":
 		sql = fmt.Sprintf("TRUNCATE TABLE ONLY %s", t.Tables.RelationNames())
 	case "DELETE":

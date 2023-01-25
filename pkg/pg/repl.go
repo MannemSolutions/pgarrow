@@ -37,6 +37,7 @@ func (c *Conn) StartRepl() (err error) {
 		log.Fatalln("CreateReplicationSlot failed:", err)
 	} else {
 		log.Info("Created temporary replication slot:", c.config.Slot)
+		c.outOfSync = true
 	}
 	if _, err = c.GetXLogPos(); err != nil {
 		return err

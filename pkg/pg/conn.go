@@ -20,6 +20,7 @@ type Conn struct {
 	relationMessages            RelationMessages
 	XLogPos                     pglogrepl.LSN
 	lastPrimaryKeepaliveMessage time.Time
+	outOfSync                   bool
 }
 
 func NewConn(conf *Config) (c *Conn) {
@@ -138,6 +139,12 @@ func (c *Conn) RunSQL(sql string) (err error) {
 	return nil
 }
 
+func MustCloseResult(result *pgconn.ResultReader) {
+	if _, err := result.Close(); err != nil {
+		log.Fatalf("Error while closing result: %e", err)
+	}
+}
+
 func (c *Conn) GetRows(query string) (answer []map[string]string, err error) {
 	if err = c.qryConnect(); err != nil {
 		return nil, err
@@ -148,6 +155,7 @@ func (c *Conn) GetRows(query string) (answer []map[string]string, err error) {
 		return nil, fmt.Errorf("query did not return results: %s", query)
 	}
 	result := cur.ResultReader()
+	defer MustCloseResult(result)
 	var hdr []string
 	for _, col := range result.FieldDescriptions() {
 		hdr = append(hdr, col.Name)
@@ -158,9 +166,6 @@ func (c *Conn) GetRows(query string) (answer []map[string]string, err error) {
 			row[hdr[i]] = string(f)
 		}
 		answer = append(answer, row)
-	}
-	if _, err = result.Close(); err != nil {
-		return nil, err
 	}
 	return answer, cur.Close()
 }
@@ -195,19 +200,25 @@ func (c *Conn) getSlotInfo() (slotInfos, error) {
 }
 
 func (c *Conn) getPgTypes() error {
-	if answer, queryErr := c.GetRows("select oid, typname from pg_type"); queryErr != nil {
+	if answer, queryErr := c.GetRows("select oid, typname, typcategory from pg_type"); queryErr != nil {
 		return queryErr
 	} else {
 		oidToPgType = make(map[uint32]string)
+		oidToPgCategory = make(map[uint32]uint8)
 		for _, row := range answer {
 			if sOid, ok := row["oid"]; !ok {
 				return fmt.Errorf("unexpected result, expected oid column")
 			} else if oid, convErr := strconv.ParseInt(sOid, 10, 32); convErr != nil {
 				log.Errorf("Error while converting string %s to int: %e", row["oid"], convErr)
 			} else if name, ok := row["typname"]; !ok {
-				return fmt.Errorf("unexpected result, expected oid column")
+				return fmt.Errorf("unexpected result, expected typname column")
+			} else if cat, ok := row["typcategory"]; !ok {
+				return fmt.Errorf("unexpected result, expected typcategory column")
+			} else if len(cat) != 1 {
+				return fmt.Errorf("unexpected result, expected typcategory to be 1 character only")
 			} else {
 				oidToPgType[uint32(oid)] = name
+				oidToPgCategory[uint32(oid)] = uint8([]rune(cat)[0])
 			}
 		}
 	}
@@ -257,6 +268,21 @@ func (c *Conn) GetTableFromOID(oid uint32) (t Table, err error) {
 	return t, nil
 }
 
+func (c *Conn) getPrimaryKeyCols(t Table) (cols []string, err error) {
+	if rows, err := c.GetRows(t.PrimaryKeyQuery()); err != nil {
+		return nil, err
+	} else {
+		for _, row := range rows {
+			if colName, ok := row["column_name"]; !ok {
+				return nil, fmt.Errorf("could not find column `column_name` in primary key query")
+			} else {
+				cols = append(cols, colName)
+			}
+		}
+	}
+	return cols, nil
+}
+
 func (c *Conn) ProcessMsg(msg []byte) (err error) {
 	if ce := quickLog.Check(zap.DebugLevel, "Processing messages"); ce != nil {
 		ce.Write(
@@ -288,4 +314,94 @@ func (c *Conn) ProcessMsg(msg []byte) (err error) {
 	}
 	return nil
 
+}
+
+func (c *Conn) StreamTables(PostProcessor func([]byte) error) (err error) {
+	if !c.outOfSync {
+		return nil
+	}
+	if answer, queryErr := c.GetRows("select schemaname, tablename from pg_publication_tables"); queryErr != nil {
+		log.Errorf("error while retrieving tables to stream: %e", queryErr)
+		return queryErr
+	} else {
+		for _, row := range answer {
+			if schemaName, sOk := row["schemaname"]; !sOk {
+				err = fmt.Errorf("pg_publication_tables result has no column `schemaname`")
+				log.Errorf("%e", err)
+				return err
+			} else if tableName, tOk := row["tablename"]; !tOk {
+				err = fmt.Errorf("pg_publication_tables result has no column `tablename`")
+				log.Errorf("%e", err)
+				return err
+			} else {
+				table := Table{Namespace: schemaName, TableName: tableName}
+				if err = c.StreamTable(PostProcessor, table); err != nil {
+					log.Errorf("error while streaming table %s: %e", table, queryErr)
+					return queryErr
+				}
+			}
+		}
+	}
+	c.outOfSync = false
+	return nil
+
+}
+
+func (c *Conn) StreamTable(PostProcessor func([]byte) error, table Table) (err error) {
+	if err = c.qryConnect(); err != nil {
+		return err
+	}
+	log.Debugf("Getting all records from: %s", table.RelationName())
+	cur := c.qConn.Exec(ctx, table.SelectAllQuery())
+	result := cur.ResultReader()
+	defer MustCloseResult(result)
+	values := make(Columns)
+	var hdr []string
+	for _, fd := range result.FieldDescriptions() {
+		hdr = append(hdr, fd.Name)
+		values[fd.Name] = Column{
+			Meta: MetaData{
+				Name:     fd.Name,
+				TypeOID:  fd.DataTypeOID,
+				TypeName: oidToPgType[fd.DataTypeOID],
+				Modifier: fd.TypeModifier,
+			},
+		}
+	}
+	where := make(Columns)
+	var pkcs []string
+	if pkcs, err = c.getPrimaryKeyCols(table); err != nil {
+		return err
+	}
+	for result.NextRow() {
+		values = values.Clone()
+		for i, f := range result.Values() {
+			value := values[hdr[i]]
+			value.Data = Data{
+				Type:   oidToPgCategory[value.Meta.TypeOID],
+				Length: uint32(len(f)),
+				Data:   f,
+			}
+			values[hdr[i]] = value
+		}
+		for _, pkc := range pkcs {
+			where[pkc] = values[pkc]
+		}
+		t := Transaction{
+			LSN:    1,
+			Type:   "UPSERT",
+			Tables: Tables{table},
+			Values: values,
+			Where:  where,
+		}
+		var raw []byte
+		if raw, err = t.Dump(); err != nil {
+			log.Errorf("Could not convert row from %s to json: %e", table.RelationName(), err)
+			return err
+		} else if err = PostProcessor(raw); err != nil {
+			log.Errorf("Could not postprocess json row from %s: %e", table.RelationName(), err)
+			return err
+		}
+	}
+	return cur.Close()
 }

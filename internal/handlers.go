@@ -43,6 +43,8 @@ func HandlePgArrowKafka(config Config) (err error) {
 	for {
 		if err = pgConn.StartRepl(); err != nil {
 			return err
+		} else if err = pgConn.StreamTables(topic.Publish); err != nil {
+			return err
 		}
 		t, pgErr := pgConn.NextTransactions()
 		if pgErr != nil {
@@ -113,6 +115,8 @@ func HandlePgArrowRabbit(config Config) (err error) {
 			for {
 				if err = queue.CreateQueue(); err != nil {
 					log.Errorf("Unknown error: %v", err)
+					return err
+				} else if err = pgConn.StreamTables(queue.Publish); err != nil {
 					return err
 				}
 				log.Debug("Queue created")
