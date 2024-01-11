@@ -1,9 +1,9 @@
 \c src
-insert into t select (id+1) from t;;
+insert into t values(1);
 insert into t2 values('{"id":"passport"}'::json);
 insert into t3 values('{"id": 1}'::json);
 insert into t4 values(true);
-insert into t5 values(now());
+insert into t5 values('2024-01-11'::timestamp);
 insert into t5 values(null);
 insert into t6 values(1.0/134.0);
 insert into t6 values(1.21);

@@ -1,12 +1,18 @@
 version: '3'
 services:
-  builder:
+  dev:
     build: ./docker/builder
     ports:
     - "2345:2345"
     volumes:
     - ./:/host
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
+  builder:
+    image: golang
+    command: make build
+    working_dir: /usr/src/app
+    volumes:
+    - ./:/usr/src/app
   postgres:
     #image: postgres
     image: postgres:11
@@ -84,3 +90,11 @@ services:
     image: mannemsolutions/pgarrow
     volumes:
     - ./config/pgarrow.yml:/etc/pgarrow/config.yaml
+  pgtester:
+    image: mannemsolutions/pgtester
+    command:
+      - pgtester
+      - /host/tests/test.yml
+    platform: linux/amd64
+    volumes:
+    - ./:/host

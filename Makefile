@@ -11,7 +11,8 @@ build_local_image:
 	docker build . -t mannemsolutions/pgarrow
 
 build_arrow:
-	go build -o ./bin/arrow.$(uname_p) ./cmd/arrow
+	go build -buildvcs=false -o ./bin/arrow ./cmd/arrow
+	ln -f ./bin/arrow ./bin/arrow.$(uname_p)
 
 build_dlv:
 	go get github.com/go-delve/delve/cmd/dlv@latest
