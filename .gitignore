@@ -1,6 +1,3 @@
 internal/version.go
 bin
-docker/*/*.arm*
-docker/*/*.aarch*
-docker/*/*.x86*
-docker/*/*.amd64*
+docker/*/arrow*
